@@ -1,0 +1,5 @@
+venv/
+.env
+__pycache__/
+*.mp3
+/tmp/price_monitor_state

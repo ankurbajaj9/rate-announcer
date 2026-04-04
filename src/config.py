@@ -1,0 +1,20 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# ENTSO-E API Configuration
+ENTSOE_API_TOKEN = os.getenv("ENTSOE_API_TOKEN", "YOUR_ENTSOE_TOKEN_HERE")
+PRICE_AREA = os.getenv("PRICE_AREA", "SE_3")
+
+# Google Home Configuration
+GOOGLE_HOME_NAME = os.getenv("GOOGLE_HOME_NAME", "Your Google Home Name")
+TTS_LANGUAGE = os.getenv("TTS_LANGUAGE", "en")
+
+# Threshold and Alert Configuration
+THRESHOLD_PERCENT = float(os.getenv("THRESHOLD_PERCENT", "0.80"))
+NOTIFICATION_COOLDOWN_SEC = int(os.getenv("NOTIFICATION_COOLDOWN_SEC", "3600"))
+
+# Service Configuration
+SERVE_PORT = int(os.getenv("SERVE_PORT", "8765"))
+STATE_FILE = os.getenv("STATE_FILE", "/tmp/price_monitor_state")
