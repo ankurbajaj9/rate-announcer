@@ -10,10 +10,10 @@ Fetches SE3 15-minute spot prices from ENTSO-E Transparency Platform and announc
     cd rate-announcer
     ```
 
-2.  **Setup Virtual Environment**:
+2.  **Setup Conda Environment**:
     ```bash
-    python3 -m venv venv
-    source venv/bin/activate
+    conda create --name rate-announcer python=3.12
+    conda activate rate-announcer
     pip install -r requirements.txt
     ```
 
@@ -22,7 +22,7 @@ Fetches SE3 15-minute spot prices from ENTSO-E Transparency Platform and announc
     ```bash
     cp .env.example .env
     ```
-    - `ENTSOE_API_TOKEN`: Get a free token from [ENTSO-E Transparency Platform](https://transparency.entsoe.eu) (My Account → Web API Security Token).
+    - `ENTSOE_API_TOKEN`: Get a free token from [ENTSO-E Transparency Platform](https://transparency.entsoe.eu). You must register an account and then send an email to `transparency@entsoe.eu` with the subject "Restful API access" to request access. Once approved, generate the token under (My Account → Web API Security Token).
     - `GOOGLE_HOME_NAME`: Exact name of your Google Home device.
     - `PRICE_AREA`: Default is `SE_3` (Stockholm).
 

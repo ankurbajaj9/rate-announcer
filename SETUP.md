@@ -32,8 +32,9 @@ pip install -r requirements.txt
 
 ### Using Conda
 ```bash
-conda create --prefix ./.conda python=3.12
-conda run -p ./.conda python -m pip install -r requirements.txt
+conda create --name rate-announcer python=3.12
+conda activate rate-announcer
+pip install -r requirements.txt
 ```
 
 ---
@@ -46,7 +47,8 @@ conda run -p ./.conda python -m pip install -r requirements.txt
     ```
 2.  **ENTSO-E API Token**: Since this project doesn't use the Tibber API or any provider-specific system, you need a token from the central European platform (ENTSO-E):
     - Register for free at [ENTSO-E Transparency Platform](https://transparency.entsoe.eu/)
-    - Go to **My Account** → **Web API Security Token** to generate your key.
+    - **Note:** ENTSO-E requires you to request API access before the token option appears. Send an email to `transparency@entsoe.eu` with the subject "Restful API access" using your registered email address.
+    - Once access is granted by their team, go to **My Account** → **Web API Security Token** to generate your key.
 3.  **Google Home Name**: Find the exact name in the Google Home app (e.g., "Kitchen speaker").
 
 ---
@@ -80,7 +82,7 @@ Wants=network-online.target
 Type=oneshot
 User=$(whoami)
 WorkingDirectory=$PWD
-ExecStart=$PWD/venv/bin/python $PWD/main.py
+ExecStart=$HOME/miniconda3/envs/rate-announcer/bin/python $PWD/main.py
 StandardOutput=journal
 StandardError=journal
 EOF
