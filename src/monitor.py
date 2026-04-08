@@ -192,7 +192,7 @@ def notify_google_home(message: str) -> bool:
     finally:
         server.shutdown()
         if browser:
-            pychromecast.discovery.stop_discovery(browser)
+            browser.stop_discovery()
         if os.path.exists(audio_path):
             os.unlink(audio_path)
 
