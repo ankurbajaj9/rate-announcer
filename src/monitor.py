@@ -13,6 +13,8 @@ import threading
 import tempfile
 import http.server
 import logging
+import json
+import pickle
 from datetime import date
 from typing import Optional
 
@@ -28,6 +30,9 @@ from src.config import (
     PRICE_AREA,
     THRESHOLD_PERCENT,
     NOTIFICATION_COOLDOWN_SEC,
+    ANNOUNCE_MINUTE_WINDOW,
+    QUIET_HOURS_START,
+    QUIET_HOURS_END,
     STATE_FILE,
     SERVE_PORT,
     TTS_LANGUAGE
@@ -85,6 +90,18 @@ def fetch_quarter_prices_today() -> pd.Series:
     Fetch today's 15-minute price granularity from ENTSO-E.
     Note: Some areas only publish hourly; we resample if needed.
     """
+    cache_file = "/tmp/rate_announcer_prices.pkl"
+    today_str = str(date.today())
+
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, "rb") as f:
+                data = pickle.load(f)
+            if data.get("date") == today_str:
+                return data["prices"]
+        except Exception as e:
+            log.warning("Could not read prices cache: %s", e)
+
     client = EntsoePandasClient(api_key=ENTSOE_API_TOKEN)
     tz = "Europe/Stockholm"
     today = pd.Timestamp(date.today(), tz=tz)
@@ -96,18 +113,45 @@ def fetch_quarter_prices_today() -> pd.Series:
     
     # Resample to 15-min and forward-fill if the source is hourly
     if isinstance(prices.index, pd.DatetimeIndex):
-        return prices.resample("15min").ffill()
+        prices = prices.resample("15min").ffill()
+
+    try:
+        with open(cache_file, "wb") as f:
+            pickle.dump({"date": today_str, "prices": prices}, f)
+    except Exception as e:
+        log.warning("Could not write prices cache: %s", e)
+
     return prices
 
 
 def get_eur_to_sek() -> float:
     """Fetch live EUR/SEK exchange rate with fallback."""
+    cache_file = "/tmp/rate_announcer_fx.json"
+    today_str = str(date.today())
+
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, "r") as f:
+                data = json.load(f)
+            if data.get("date") == today_str:
+                return data["rate"]
+        except Exception as e:
+            log.warning("Could not read FX cache: %s", e)
+
     try:
         r = requests.get(
             "https://api.frankfurter.app/latest?from=EUR&to=SEK", timeout=10
         )
         r.raise_for_status()
-        return r.json()["rates"]["SEK"]
+        rate = r.json()["rates"]["SEK"]
+
+        try:
+            with open(cache_file, "w") as f:
+                json.dump({"date": today_str, "rate": rate}, f)
+        except Exception as e:
+            log.warning("Could not write FX cache: %s", e)
+
+        return rate
     except Exception as e:
         log.warning("FX fetch failed (%s) — using fallback rate 11.0 SEK/EUR", e)
         return 11.0
@@ -201,6 +245,29 @@ def notify_google_home(message: str) -> bool:
 
 def run():
     """Main execution cycle: check cooldown, fetch prices, and alert if needed."""
+    from datetime import datetime
+
+    now = datetime.now()
+
+    # 0a. Check Quiet Hours
+    # if it's the same day: 22 to 23 or 0 to 7 -> if end < start: (h >= start or h < end) otherwise: (start <= h < end)
+    if QUIET_HOURS_START > QUIET_HOURS_END:
+        is_quiet = now.hour >= QUIET_HOURS_START or now.hour < QUIET_HOURS_END
+    else:
+        is_quiet = QUIET_HOURS_START <= now.hour < QUIET_HOURS_END
+
+    if is_quiet:
+        log.info("Quiet hours active (%02d to %02d). Skipping announcement.", QUIET_HOURS_START, QUIET_HOURS_END)
+        return
+
+    # 0b. Check if we're near the beginning of an interval
+    # Since intervals are typically 15 mins or 60 mins, we check if the current minute 
+    # modulo 15 is within the allowed window.
+    if now.minute % 15 > ANNOUNCE_MINUTE_WINDOW:
+        log.info("Outside of announcement window. Current minute %02d is past the first %d mins of the interval.",
+                 now.minute, ANNOUNCE_MINUTE_WINDOW)
+        return
+
     # 1. Cooldown Check
     last_alert = read_last_alert_time()
     elapsed = time.time() - last_alert

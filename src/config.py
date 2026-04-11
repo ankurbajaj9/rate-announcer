@@ -14,6 +14,11 @@ TTS_LANGUAGE = os.getenv("TTS_LANGUAGE", "en")
 # Threshold and Alert Configuration
 THRESHOLD_PERCENT = float(os.getenv("THRESHOLD_PERCENT", "0.80"))
 NOTIFICATION_COOLDOWN_SEC = int(os.getenv("NOTIFICATION_COOLDOWN_SEC", "3600"))
+ANNOUNCE_MINUTE_WINDOW = int(os.getenv("ANNOUNCE_MINUTE_WINDOW", "5"))
+
+# Quiet Hours Configuration (24-hour format)
+QUIET_HOURS_START = int(os.getenv("QUIET_HOURS_START", "22"))
+QUIET_HOURS_END = int(os.getenv("QUIET_HOURS_END", "7"))
 
 # Service Configuration
 SERVE_PORT = int(os.getenv("SERVE_PORT", "8765"))

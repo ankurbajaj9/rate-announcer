@@ -82,7 +82,7 @@ Wants=network-online.target
 Type=oneshot
 User=$(whoami)
 WorkingDirectory=$PWD
-ExecStart=$HOME/miniconda3/envs/rate-announcer/bin/python $PWD/main.py
+ExecStart=$HOME/miniforge3/envs/rate-announcer/bin/python $PWD/main.py
 StandardOutput=journal
 StandardError=journal
 EOF
