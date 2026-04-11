@@ -17,3 +17,4 @@
 - [ ] Add unit tests for price calculation logic
 - [ ] Implement multi-speaker support
 - [ ] Add support for different notification languages (currently supports 'sv' via config)
+- [ ] Convert to an in-memory long-running daemon service to eliminate the 15-minute startup overhead of Python and Pandas
