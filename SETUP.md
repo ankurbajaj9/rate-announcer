@@ -10,7 +10,7 @@ This means it works perfectly whether your contract is with Telinet, Vattenfall,
 ENTSO-E (Day-ahead prices)
         │
         ▼
-  Raspberry Pi / Server (runs every 15 min or 1 hour)
+  Raspberry Pi / Server (daemon process running in background)
   ├── Fetches today's prices via ENTSO-E API
   ├── Converts EUR/MWh to SEK/kWh via Frankfurter API
   ├── Compares current price window to threshold (e.g., 80% of daily max)
@@ -68,64 +68,39 @@ python test_monitor.py
 
 ---
 
-## 4. Schedule with systemd (For Linux/Raspberry Pi)
+## 4. Run as a background service with systemd (For Linux/Raspberry Pi)
+
+Since the monitor is a long-running daemon process that schedules its own intervals, you only need a simple systemd service (no timer needed).
 
 ```bash
 # Create service file
 sudo tee /etc/systemd/system/price-monitor.service <<EOF
 [Unit]
-Description=Stockholm Electricity Price Monitor
+Description=Stockholm Electricity Price Monitor Daemon
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=oneshot
-User=$(whoami)
+Type=simple
+User=$(id -un)
 WorkingDirectory=$PWD
 ExecStart=$HOME/miniforge3/envs/rate-announcer/bin/python $PWD/main.py
+Restart=always
+RestartSec=10
 StandardOutput=journal
 StandardError=journal
-EOF
-
-# Create timer file
-sudo tee /etc/systemd/system/price-monitor.timer <<'EOF'
-[Unit]
-Description=Run electricity price monitor
-Requires=price-monitor.service
-
-[Timer]
-OnBootSec=2min
-# Use 15min for kvartspris (e.g. Telinet), or 1h for hourly spot prices (e.g. Tibber, Greenely)
-OnUnitActiveSec=15min
-AccuracySec=30s
 
 [Install]
-WantedBy=timers.target
+WantedBy=multi-user.target
 EOF
 
-# Enable and start the timer
-sudo systemctl enable --now price-monitor.timer
-```
-
-EOF
-
-# Enable and start
+# Enable and start the service
 sudo systemctl daemon-reload
-sudo systemctl enable --now price-monitor.timer
+sudo systemctl enable --now price-monitor.service
 
-# Check status
-sudo systemctl list-timers price-monitor.timer
-journalctl -u price-monitor.service -f   # live logs
-```
-
----
-
-## Alternative: cron (simpler)
-
-```bash
-crontab -e
-# Add this line:
-*/15 * * * *  /home/pi/venv/bin/python /home/pi/price_monitor.py >> /tmp/price_monitor.log 2>&1
+# Check status and live logs
+sudo systemctl status price-monitor.service
+journalctl -u price-monitor.service -f
 ```
 
 ---

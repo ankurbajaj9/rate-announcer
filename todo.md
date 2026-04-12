@@ -17,4 +17,4 @@
 - [ ] Add unit tests for price calculation logic
 - [ ] Implement multi-speaker support
 - [ ] Add support for different notification languages (currently supports 'sv' via config)
-- [ ] Convert to an in-memory long-running daemon service to eliminate the 15-minute startup overhead of Python and Pandas
+- [ ] Refactor scheduling: Create a daily planner that fetches tomorrow's prices once a day (e.g., at 13:00), pre-calculates the exact timestamps when boundaries are crossed, and schedules exact one-off runs (e.g., using `at` or an async timer) instead of a constant 15-minute polling loop.

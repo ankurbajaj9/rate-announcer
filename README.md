@@ -35,7 +35,7 @@ python main.py
 
 ## Automation (Systemd)
 
-Refer to [SETUP.md](SETUP.md) for detailed instructions on setting up a systemd timer to run the monitor every 15 minutes.
+Refer to [SETUP.md](SETUP.md) for detailed instructions on setting up a systemd service to run the monitor as a background daemon.
 
 ## Project Structure
 

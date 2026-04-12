@@ -3,10 +3,10 @@
 Stockholm Electricity Price Monitor — Telinet kvartspris edition
 =================================================================
 Fetches spot prices from ENTSO-E and announces a Google Home alert.
+Scheduled via BackgroundScheduler.
 """
 
 import os
-import sys
 import time
 import socket
 import threading
@@ -14,26 +14,21 @@ import tempfile
 import http.server
 import logging
 import json
-import pickle
-from datetime import date
-from typing import Optional
-
 import requests
-from entsoe import EntsoePandasClient
-import pandas as pd
-import pychromecast
+from datetime import date, datetime, timedelta
+from typing import Optional, Any
+
 from gtts import gTTS
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.date import DateTrigger
 
 from src.config import (
     ENTSOE_API_TOKEN,
     GOOGLE_HOME_NAME,
     PRICE_AREA,
     THRESHOLD_PERCENT,
-    NOTIFICATION_COOLDOWN_SEC,
-    ANNOUNCE_MINUTE_WINDOW,
     QUIET_HOURS_START,
     QUIET_HOURS_END,
-    STATE_FILE,
     SERVE_PORT,
     TTS_LANGUAGE
 )
@@ -46,6 +41,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+scheduler = BackgroundScheduler()
 
 # ── Helpers ──────────────────────────────────
 
@@ -53,7 +49,6 @@ def get_local_ip() -> str:
     """Determine the local IP address for the HTTP server."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        # Using a reliable public address to find our local outgoing interface
         s.connect(("8.8.8.8", 80))
         return s.getsockname()[0]
     except Exception:
@@ -62,81 +57,76 @@ def get_local_ip() -> str:
         s.close()
 
 
-def read_last_alert_time() -> float:
-    """Read the timestamp of the last alert from the state file."""
-    if not os.path.exists(STATE_FILE):
-        return 0.0
-    try:
-        with open(STATE_FILE) as f:
-            return float(f.read().strip())
-    except (ValueError, OSError) as e:
-        log.warning("Could not read state file: %s. Starting fresh.", e)
-        return 0.0
-
-
-def write_last_alert_time(ts: float) -> None:
-    """Save the current alert timestamp to the state file."""
-    try:
-        with open(STATE_FILE, "w") as f:
-            f.write(str(ts))
-    except OSError as e:
-        log.error("Could not write state file: %s", e)
+def is_quiet_hour(dt: datetime) -> bool:
+    """Check if the given datetime is within quiet hours."""
+    h = dt.hour
+    if QUIET_HOURS_START > QUIET_HOURS_END:
+        return h >= QUIET_HOURS_START or h < QUIET_HOURS_END
+    else:
+        return QUIET_HOURS_START <= h < QUIET_HOURS_END
 
 
 # ── Price data fetching ──────────────────────
 
-def fetch_quarter_prices_today() -> pd.Series:
+def fetch_quarter_prices(target_date: date) -> Any:
     """
-    Fetch today's 15-minute price granularity from ENTSO-E.
+    Fetch a target date's 15-minute price granularity from ENTSO-E.
     Note: Some areas only publish hourly; we resample if needed.
     """
-    cache_file = "/tmp/rate_announcer_prices.pkl"
-    today_str = str(date.today())
+    import pandas as pd
+    from entsoe import EntsoePandasClient
 
-    if os.path.exists(cache_file):
-        try:
-            with open(cache_file, "rb") as f:
-                data = pickle.load(f)
-            if data.get("date") == today_str:
-                return data["prices"]
-        except Exception as e:
-            log.warning("Could not read prices cache: %s", e)
+    cache_file = "/tmp/rate_announcer_prices.pkl"
+    target_date_str = target_date.isoformat()
+    today, tomorrow = date.today(), date.today() + timedelta(days=1)
+
+    if target_date in (today, tomorrow):
+        if os.path.exists(cache_file):
+            try:
+                cached_data = pd.read_pickle(cache_file)
+                if isinstance(cached_data, tuple) and len(cached_data) == 2:
+                    cached_date, prices = cached_data
+                    if cached_date == target_date_str:
+                        return prices
+            except Exception as e:
+                log.warning("Failed to load price cache: %s", e)
 
     client = EntsoePandasClient(api_key=ENTSOE_API_TOKEN)
     tz = "Europe/Stockholm"
-    today = pd.Timestamp(date.today(), tz=tz)
-    start = today
-    end = today + pd.Timedelta(days=1)
+    start = pd.Timestamp(target_date, tz=tz)
+    end = start + pd.Timedelta(days=1)
 
-    log.info("Fetching %s day-ahead prices from ENTSO-E (%s) ...", PRICE_AREA, today.date())
+    log.info("Fetching %s day-ahead prices from ENTSO-E (%s) ...", PRICE_AREA, target_date)
     prices = client.query_day_ahead_prices(PRICE_AREA, start=start, end=end)
     
     # Resample to 15-min and forward-fill if the source is hourly
     if isinstance(prices.index, pd.DatetimeIndex):
         prices = prices.resample("15min").ffill()
 
-    try:
-        with open(cache_file, "wb") as f:
-            pickle.dump({"date": today_str, "prices": prices}, f)
-    except Exception as e:
-        log.warning("Could not write prices cache: %s", e)
+    if target_date in (today, tomorrow):
+        try:
+            pd.to_pickle((target_date_str, prices), cache_file)
+        except Exception as e:
+            log.warning("Failed to save price cache: %s", e)
 
     return prices
 
 
-def get_eur_to_sek() -> float:
+def get_eur_to_sek(target_date: date) -> float:
     """Fetch live EUR/SEK exchange rate with fallback."""
     cache_file = "/tmp/rate_announcer_fx.json"
-    today_str = str(date.today())
+    target_date_str = target_date.isoformat()
+    today, tomorrow = date.today(), date.today() + timedelta(days=1)
 
-    if os.path.exists(cache_file):
-        try:
-            with open(cache_file, "r") as f:
-                data = json.load(f)
-            if data.get("date") == today_str:
-                return data["rate"]
-        except Exception as e:
-            log.warning("Could not read FX cache: %s", e)
+    if target_date in (today, tomorrow):
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, "r") as f:
+                    cached_data = json.load(f)
+                if cached_data.get("date") == target_date_str:
+                    return cached_data.get("rate")
+            except Exception as e:
+                log.warning("Failed to load FX cache: %s", e)
 
     try:
         r = requests.get(
@@ -145,11 +135,12 @@ def get_eur_to_sek() -> float:
         r.raise_for_status()
         rate = r.json()["rates"]["SEK"]
 
-        try:
-            with open(cache_file, "w") as f:
-                json.dump({"date": today_str, "rate": rate}, f)
-        except Exception as e:
-            log.warning("Could not write FX cache: %s", e)
+        if target_date in (today, tomorrow):
+            try:
+                with open(cache_file, "w") as f:
+                    json.dump({"date": target_date_str, "rate": rate}, f)
+            except Exception as e:
+                log.warning("Failed to save FX cache: %s", e)
 
         return rate
     except Exception as e:
@@ -160,16 +151,6 @@ def get_eur_to_sek() -> float:
 def eur_mwh_to_sek_kwh(eur_mwh: float, fx: float) -> float:
     """Convert price from EUR/MWh to SEK/kWh."""
     return eur_mwh * fx / 1000
-
-
-def get_current_quarter_price(prices: pd.Series) -> Optional[float]:
-    """Retrieve the price for the current 15-minute time bucket."""
-    now_utc = pd.Timestamp.utcnow().floor("15min")
-    try:
-        # Match current time precisely or find nearest previous
-        return prices.asof(now_utc)
-    except Exception:
-        return None
 
 
 # ── Notification ─────────────────────────────
@@ -241,81 +222,77 @@ def notify_google_home(message: str) -> bool:
             os.unlink(audio_path)
 
 
-# ── Run logic ────────────────────────────────
+# ── Scheduling logic ────────────────────────
 
-def run():
-    """Main execution cycle: check cooldown, fetch prices, and alert if needed."""
-    from datetime import datetime
-
-    now = datetime.now()
-
-    # 0a. Check Quiet Hours
-    # if it's the same day: 22 to 23 or 0 to 7 -> if end < start: (h >= start or h < end) otherwise: (start <= h < end)
-    if QUIET_HOURS_START > QUIET_HOURS_END:
-        is_quiet = now.hour >= QUIET_HOURS_START or now.hour < QUIET_HOURS_END
-    else:
-        is_quiet = QUIET_HOURS_START <= now.hour < QUIET_HOURS_END
-
-    if is_quiet:
-        log.info("Quiet hours active (%02d to %02d). Skipping announcement.", QUIET_HOURS_START, QUIET_HOURS_END)
-        return
-
-    # 0b. Check if we're near the beginning of an interval
-    # Since intervals are typically 15 mins or 60 mins, we check if the current minute 
-    # modulo 15 is within the allowed window.
-    if now.minute % 15 > ANNOUNCE_MINUTE_WINDOW:
-        log.info("Outside of announcement window. Current minute %02d is past the first %d mins of the interval.",
-                 now.minute, ANNOUNCE_MINUTE_WINDOW)
-        return
-
-    # 1. Cooldown Check
-    last_alert = read_last_alert_time()
-    elapsed = time.time() - last_alert
-    if elapsed < NOTIFICATION_COOLDOWN_SEC:
-        remaining = int((NOTIFICATION_COOLDOWN_SEC - elapsed) // 60)
-        log.info("Cooldown active: %d minutes remaining.", remaining)
-        return
-
-    # 2. Fetch prices
+def plan_day(target_date: date):
+    """
+    Fetches prices/FX for a target date, scans all 15-min intervals,
+    and schedules immediate jobs if price >= threshold and outside quiet hours.
+    """
+    import pandas as pd
     try:
-        prices_eur = fetch_quarter_prices_today()
+        prices_eur = fetch_quarter_prices(target_date)
         if prices_eur.empty:
-            log.warning("No price data found.")
+            log.warning("No price data found for %s.", target_date)
             return
 
-        current_eur = get_current_quarter_price(prices_eur)
-        if current_eur is None:
-            log.warning("Could not find price for current 15-min window.")
-            return
-
-        fx = get_eur_to_sek()
-        current_sek = eur_mwh_to_sek_kwh(float(current_eur), fx)
+        fx = get_eur_to_sek(target_date)
         daily_max_sek = eur_mwh_to_sek_kwh(float(prices_eur.max()), fx)
         threshold = daily_max_sek * THRESHOLD_PERCENT
-        pct = (current_sek / daily_max_sek) * 100
 
-        log.info(
-            "Price: %.4f SEK/kWh | Max: %.4f | Threshold (%.0f%%): %.4f | Current: %.0f%% of max",
-            current_sek, daily_max_sek, THRESHOLD_PERCENT * 100, threshold, pct
-        )
+        log.info("Planning for %s | Max SEK: %.4f | Threshold (%.0f%%): %.4f",
+                 target_date, daily_max_sek, THRESHOLD_PERCENT * 100, threshold)
 
-        # 3. Decision
-        if current_sek >= threshold:
-            price_ore = round(current_sek * 100, 1)
-            msg = (
-                f"Electricity price alert. The current rate is {price_ore} öre, "
-                f"which is {pct:.0f} percent of today's maximum price. "
-                "Consider reducing energy usage."
-            )
-            log.info("ALARM! Sending notification...")
-            if notify_google_home(msg):
-                write_last_alert_time(time.time())
-        else:
-            log.info("Price is within safe limits. No action.")
+        for ts, eur_price in prices_eur.items():
+            current_sek = eur_mwh_to_sek_kwh(float(eur_price), fx)
+            
+            # Use interval's start time for notification
+            interval_time = ts.to_pydatetime()
 
+            if current_sek >= threshold:
+                if not is_quiet_hour(interval_time):
+                    # Only schedule if the run_date is strictly in the future
+                    if interval_time > datetime.now(interval_time.tzinfo):
+                        pct = (current_sek / daily_max_sek) * 100
+                        price_ore = round(current_sek * 100, 1)
+                        msg = (
+                            f"Electricity price alert. The current rate is {price_ore} öre, "
+                            f"which is {pct:.0f} percent of today's maximum price. "
+                            "Consider reducing energy usage."
+                        )
+                        
+                        log.info("Scheduling notification for %.4f SEK (%.0f%%) at %s", 
+                                 current_sek, pct, interval_time)
+                                 
+                        scheduler.add_job(
+                            notify_google_home,
+                            'date',
+                            run_date=interval_time,
+                            args=[msg]
+                        )
     except Exception as e:
-        log.exception("Workflow error: %s", e)
+        log.exception("Workflow error while planning day: %s", e)
 
 
-if __name__ == "__main__":
-    run()
+def daily_planner_job():
+    """Simply calls plan_day for tomorrow."""
+    tomorrow = date.today() + timedelta(days=1)
+    plan_day(tomorrow)
+
+
+def start_scheduler() -> BackgroundScheduler:
+    """Configures and starts the scheduler for daily price checks."""
+    # Plan current day immediately to pick up any remaining peaks for today
+    plan_day(date.today())
+
+    # Schedule the planning for tomorrow at 14:00 daily
+    scheduler.add_job(
+        daily_planner_job,
+        'cron',
+        hour=14,
+        minute=0
+    )
+
+    scheduler.start()
+    log.info("Scheduler started. Background monitoring active.")
+    return scheduler
