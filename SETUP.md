@@ -70,6 +70,15 @@ python test_monitor.py
 
 ## 4. Run as a background service with systemd (For Linux/Raspberry Pi)
 
+> **Note for returning users:** If you previously installed this project using the `.timer` approach, you should remove the old files before installing this new version:
+> ```bash
+> sudo systemctl stop price-monitor.timer price-monitor.service
+> sudo systemctl disable price-monitor.timer price-monitor.service
+> sudo rm /etc/systemd/system/price-monitor.timer
+> sudo rm /etc/systemd/system/price-monitor.service
+> sudo systemctl daemon-reload
+> ```
+
 Since the monitor is a long-running daemon process that schedules its own intervals, you only need a simple systemd service (no timer needed).
 
 ```bash

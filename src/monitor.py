@@ -243,26 +243,54 @@ def plan_day(target_date: date):
         log.info("Planning for %s | Max SEK: %.4f | Threshold (%.0f%%): %.4f",
                  target_date, daily_max_sek, THRESHOLD_PERCENT * 100, threshold)
 
-        for ts, eur_price in prices_eur.items():
+        for i in range(len(prices_eur)):
+            ts = prices_eur.index[i]
+            eur_price = prices_eur.iloc[i]
             current_sek = eur_mwh_to_sek_kwh(float(eur_price), fx)
             
             # Use interval's start time for notification
             interval_time = ts.to_pydatetime()
+            is_high = current_sek >= threshold
+            
+            # Check if this is the start of a high price period
+            is_entering_high = False
+            if is_high:
+                if i == 0:
+                    is_entering_high = True
+                else:
+                    prev_eur_price = prices_eur.iloc[i - 1]
+                    prev_sek = eur_mwh_to_sek_kwh(float(prev_eur_price), fx)
+                    if prev_sek < threshold:
+                        is_entering_high = True
 
-            if current_sek >= threshold:
+            if is_entering_high:
+                # Find when the price drops back below the threshold
+                drop_time = None
+                for j in range(i + 1, len(prices_eur)):
+                    future_sek = eur_mwh_to_sek_kwh(float(prices_eur.iloc[j]), fx)
+                    if future_sek < threshold:
+                        drop_time = prices_eur.index[j].to_pydatetime()
+                        break
+
                 if not is_quiet_hour(interval_time):
                     # Only schedule if the run_date is strictly in the future
                     if interval_time > datetime.now(interval_time.tzinfo):
                         pct = (current_sek / daily_max_sek) * 100
                         price_ore = round(current_sek * 100, 1)
+                        
                         msg = (
                             f"Electricity price alert. The current rate is {price_ore} öre, "
                             f"which is {pct:.0f} percent of today's maximum price. "
-                            "Consider reducing energy usage."
                         )
                         
-                        log.info("Scheduling notification for %.4f SEK (%.0f%%) at %s", 
-                                 current_sek, pct, interval_time)
+                        if drop_time:
+                            drop_time_str = drop_time.strftime("%H:%M")
+                            msg += f"The rate will drop below the threshold at {drop_time_str}. Consider delaying energy usage until then."
+                        else:
+                            msg += "The rate will remain high for the rest of the day. Consider reducing energy usage."
+                        
+                        log.info("Scheduling notification for %.4f SEK (%.0f%%) at %s. Drop time: %s", 
+                                 current_sek, pct, interval_time, drop_time)
                                  
                         scheduler.add_job(
                             notify_google_home,
