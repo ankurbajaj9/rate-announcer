@@ -192,6 +192,7 @@ def notify_google_home(message: str) -> bool:
     browser = None
     try:
         log.info("Connecting to Google Home: '%s' ...", GOOGLE_HOME_NAME)
+        # Using get_chromecasts with extra retries and timeouts for background threads
         chromecasts, browser = pychromecast.get_chromecasts(
             tries=3,
             retry_wait=2.0,
