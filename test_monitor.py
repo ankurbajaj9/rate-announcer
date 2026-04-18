@@ -94,8 +94,10 @@ class TestMonitor(unittest.TestCase):
         
         # Mock chromecast device and browser
         mock_cast = MagicMock()
+        mock_cast.name = "Your Google Home Name"
         mock_browser = MagicMock()
-        mock_chromecast.get_listed_chromecasts.return_value = ([mock_cast], mock_browser)
+        # Return a list containing our mock device
+        mock_chromecast.get_chromecasts.return_value = ([mock_cast], mock_browser)
         
         # Speed up test execution by overriding time.sleep
         with patch("src.monitor.time.sleep"):
@@ -104,7 +106,7 @@ class TestMonitor(unittest.TestCase):
             # Verifications
             self.assertTrue(success)
             mock_gtts.assert_called_once()
-            mock_chromecast.get_listed_chromecasts.assert_called_once()
+            mock_chromecast.get_chromecasts.assert_called_once()
             mock_cast.wait.assert_called_once()
             mock_cast.media_controller.play_media.assert_called_once()
             mock_cast.media_controller.block_until_active.assert_called_once()
@@ -117,7 +119,7 @@ class TestMonitor(unittest.TestCase):
         """Test notification when the Google Home device is not found."""
         mock_browser = MagicMock()
         # Return empty list for chromecasts
-        mock_chromecast.get_listed_chromecasts.return_value = ([], mock_browser)
+        mock_chromecast.get_chromecasts.return_value = ([], mock_browser)
         
         success = notify_google_home("Test message")
         
@@ -127,9 +129,9 @@ class TestMonitor(unittest.TestCase):
     @patch("src.monitor.pychromecast")
     @patch("src.monitor.gTTS")
     @patch("src.monitor.http.server.HTTPServer")
-    def test_notify_google_home_exception(self, mock_server, mock_gtts, mock_chromecast):
+    def test_notify_google_home_exception(self, mock_server, mock_g, mock_chromecast):
         """Test notification handles exceptions gracefully."""
-        mock_chromecast.get_listed_chromecasts.side_effect = Exception("Network discovery failed")
+        mock_chromecast.get_chromecasts.side_effect = Exception("Network discovery failed")
         
         success = notify_google_home("Test message")
         self.assertFalse(success)

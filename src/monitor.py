@@ -192,18 +192,18 @@ def notify_google_home(message: str) -> bool:
     browser = None
     try:
         log.info("Connecting to Google Home: '%s' ...", GOOGLE_HOME_NAME)
-        chromecasts, browser = pychromecast.get_listed_chromecasts(
-            friendly_names=[GOOGLE_HOME_NAME],
+        chromecasts, browser = pychromecast.get_chromecasts(
             tries=3,
             retry_wait=2.0,
-            discovery_timeout=10.0
+            timeout=10.0
         )
         
-        if not chromecasts:
+        cast = next((c for c in chromecasts if c.name == GOOGLE_HOME_NAME), None)
+        
+        if not cast:
             log.error("Google Home '%s' not found.", GOOGLE_HOME_NAME)
             return False
 
-        cast = chromecasts[0]
         cast.wait()
         
         mc = cast.media_controller
