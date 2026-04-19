@@ -4,13 +4,40 @@ from unittest.mock import patch, MagicMock, mock_open
 from datetime import datetime, date
 import pandas as pd
 
-from src.monitor import is_quiet_hour
+from src.monitor import _build_summary_message, is_quiet_hour
 from src.notify import get_local_ip, notify_google_home
 from src.prices import eur_mwh_to_sek_kwh, fetch_quarter_prices, get_eur_to_sek
 
 class TestMonitor(unittest.TestCase):
 
-    def test_eur_mwh_to_sek_kwh(self):
+    def test_build_summary_message(self):
+        """Test that _build_summary_message produces the correct summary string."""
+        msg = _build_summary_message(
+            "today",
+            75.0,
+            (120.5, "14:00"),
+            (30.2, "03:00"),
+        )
+        expected = (
+            "I have fetched the electricity rates for today. "
+            "The average price is 75.0 öre per kilowatt hour. "
+            "The maximum price will be 120.5 öre at 14:00, "
+            "and the minimum will be 30.2 öre at 03:00."
+        )
+        self.assertEqual(msg, expected)
+
+    def test_build_summary_message_tomorrow(self):
+        """Test that day_word is correctly included in the summary."""
+        msg = _build_summary_message(
+            "tomorrow",
+            50.0,
+            (95.0, "09:00"),
+            (20.0, "16:00"),
+        )
+        self.assertIn("tomorrow", msg)
+        self.assertNotIn("today", msg)
+
+    
         """Test the conversion calculation."""
         self.assertAlmostEqual(eur_mwh_to_sek_kwh(100.0, 11.5), 1.15)
         self.assertAlmostEqual(eur_mwh_to_sek_kwh(0.0, 10.0), 0.0)
