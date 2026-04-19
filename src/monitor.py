@@ -18,6 +18,7 @@ import requests
 from datetime import date, datetime, timedelta
 from typing import Optional, Any
 
+import zeroconf
 import pychromecast
 from gtts import gTTS
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -69,10 +70,11 @@ def is_quiet_hour(dt: datetime) -> bool:
 
 # ── Price data fetching ──────────────────────
 
-def fetch_quarter_prices(target_date: date) -> Any:
+def fetch_quarter_prices(target_date: date) -> tuple[Any, bool]:
     """
     Fetch a target date's 15-minute price granularity from ENTSO-E.
     Note: Some areas only publish hourly; we resample if needed.
+    Returns: A tuple of (prices, is_new_fetch)
     """
     import pandas as pd
     from entsoe import EntsoePandasClient
@@ -88,7 +90,7 @@ def fetch_quarter_prices(target_date: date) -> Any:
                 if isinstance(cached_data, tuple) and len(cached_data) == 2:
                     cached_date, prices = cached_data
                     if cached_date == target_date_str:
-                        return prices
+                        return prices, False
             except Exception as e:
                 log.warning("Failed to load price cache: %s", e)
 
@@ -110,7 +112,7 @@ def fetch_quarter_prices(target_date: date) -> Any:
         except Exception as e:
             log.warning("Failed to save price cache: %s", e)
 
-    return prices
+    return prices, True
 
 
 def get_eur_to_sek(target_date: date) -> float:
@@ -190,16 +192,28 @@ def notify_google_home(message: str) -> bool:
     log.info("Serving audio: %s", audio_url)
 
     browser = None
+    zconf = None
     try:
         log.info("Connecting to Google Home: '%s' ...", GOOGLE_HOME_NAME)
-        # Using get_chromecasts with extra retries and timeouts for background threads
-        chromecasts, browser = pychromecast.get_chromecasts(
-            tries=3,
-            retry_wait=2.0,
-            timeout=10.0
-        )
         
-        cast = next((c for c in chromecasts if c.name == GOOGLE_HOME_NAME), None)
+        cast = None
+        discover_complete = threading.Event()
+        
+        def add_callback(uuid, service):
+            nonlocal cast
+            cast_info = browser.devices[uuid]
+            if cast_info.friendly_name == GOOGLE_HOME_NAME:
+                cast = pychromecast.get_chromecast_from_cast_info(cast_info, zconf)
+                discover_complete.set()
+
+        zconf = zeroconf.Zeroconf()
+        browser = pychromecast.discovery.CastBrowser(
+            pychromecast.discovery.SimpleCastListener(add_callback=add_callback),
+            zconf
+        )
+        browser.start_discovery()
+        
+        discover_complete.wait(timeout=10.0)
         
         if not cast:
             log.error("Google Home '%s' not found.", GOOGLE_HOME_NAME)
@@ -223,6 +237,8 @@ def notify_google_home(message: str) -> bool:
         server.shutdown()
         if browser:
             browser.stop_discovery()
+        if zconf:
+            zconf.close()
         if os.path.exists(audio_path):
             os.unlink(audio_path)
 
@@ -236,17 +252,41 @@ def plan_day(target_date: date):
     """
     import pandas as pd
     try:
-        prices_eur = fetch_quarter_prices(target_date)
+        prices_eur, is_new_fetch = fetch_quarter_prices(target_date)
         if prices_eur.empty:
             log.warning("No price data found for %s.", target_date)
             return
 
         fx = get_eur_to_sek(target_date)
         daily_max_sek = eur_mwh_to_sek_kwh(float(prices_eur.max()), fx)
+        daily_min_sek = eur_mwh_to_sek_kwh(float(prices_eur.min()), fx)
+        daily_avg_sek = eur_mwh_to_sek_kwh(float(prices_eur.mean()), fx)
         threshold = daily_max_sek * THRESHOLD_PERCENT
 
         log.info("Planning for %s | Max SEK: %.4f | Threshold (%.0f%%): %.4f",
                  target_date, daily_max_sek, THRESHOLD_PERCENT * 100, threshold)
+
+        # Let the user know the summary if the rates were just fetched
+        if is_new_fetch and not is_quiet_hour(datetime.now()):
+            day_word = "today" if target_date == date.today() else "tomorrow"
+            
+            # Announce the summary right away using the scheduler
+            max_ore = round(daily_max_sek * 100, 1)
+            min_ore = round(daily_min_sek * 100, 1)
+            avg_ore = round(daily_avg_sek * 100, 1)
+            
+            summary_msg = (
+                f"I have fetched the electricity rates for {day_word}. "
+                f"The average price is {avg_ore} öre per kilowatt hour. "
+                f"The maximum price will be {max_ore} öre, and the minimum will be {min_ore} öre."
+            )
+            log.info("Scheduling daily summary notification: %s", summary_msg)
+            scheduler.add_job(
+                notify_google_home,
+                'date',
+                run_date=datetime.now() + timedelta(seconds=2),
+                args=[summary_msg]
+            )
 
         for i in range(len(prices_eur)):
             ts = prices_eur.index[i]

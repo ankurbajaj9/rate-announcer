@@ -6,15 +6,17 @@
 - [x] Move core logic from root to [src/monitor.py](src/monitor.py)
 - [x] Create [main.py](main.py) as entry point
 - [x] Update [README.md](README.md) with new project structure
+- [x] Migrate PyChromecast discovery to modern `CastBrowser` architecture
+- [x] Announce daily summary with max, min, and average rates
+- [x] Add comprehensive unit tests with mocked Google Home discovery ([test_monitor.py](test_monitor.py))
+- [x] Implement CLI script for manually testing announcements ([test_announce.py](test_announce.py))
 
 ## In Progress
 - [ ] Finalize project cleanup (removing legacy files)
 
 ## To-do
 - [ ] Add more comprehensive logging options
-- [ ] Implement a command-line interface (CLI) for testing individual components
 - [ ] Containerize the application (Dockerfile)
-- [ ] Add unit tests for price calculation logic
 - [ ] Implement multi-speaker support
 - [ ] Add support for different notification languages (currently supports 'sv' via config)
 - [ ] Refactor scheduling: Create a daily planner that fetches tomorrow's prices once a day (e.g., at 13:00), pre-calculates the exact timestamps when boundaries are crossed, and schedules exact one-off runs (e.g., using `at` or an async timer) instead of a constant 15-minute polling loop.
