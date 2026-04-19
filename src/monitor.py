@@ -239,7 +239,7 @@ def notify_google_home(message: str) -> bool:
             state = status.player_state
             idle_reason = status.idle_reason
 
-            if state in {"PLAYING", "BUFFERING", "PAUSED"}:
+            if state in {"PLAYING", "BUFFERING"}:
                 playback_ready = True
                 break
             if state == "IDLE" and idle_reason in {"ERROR", "CANCELLED", "INTERRUPTED"}:
