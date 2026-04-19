@@ -79,11 +79,12 @@ class TestMonitor(unittest.TestCase):
             self.assertEqual(result.iloc[0], 100.0)
             self.assertEqual(result.iloc[-1], 150.0)
 
+    @patch("src.notify.get_local_ip", return_value="127.0.0.1")
     @patch("src.notify.zeroconf.Zeroconf")
     @patch("src.notify.pychromecast")
     @patch("src.notify.gTTS")
     @patch("src.notify.http.server.HTTPServer")
-    def test_notify_google_home_success(self, mock_server, mock_gtts, mock_chromecast, mock_zeroconf):
+    def test_notify_google_home_success(self, mock_server, mock_gtts, mock_chromecast, mock_zeroconf, mock_local_ip):
         """Test a successful Google Home notification."""
         # Mock gTTS explicitly
         mock_gtts_instance = MagicMock()
@@ -125,11 +126,12 @@ class TestMonitor(unittest.TestCase):
             mock_cast.media_controller.update_status.assert_called()
             mock_browser.stop_discovery.assert_called_once()
 
+    @patch("src.notify.get_local_ip", return_value="127.0.0.1")
     @patch("src.notify.zeroconf.Zeroconf")
     @patch("src.notify.pychromecast")
     @patch("src.notify.gTTS")
     @patch("src.notify.http.server.HTTPServer")
-    def test_notify_google_home_playback_not_started(self, mock_server, mock_gtts, mock_chromecast, mock_zeroconf):
+    def test_notify_google_home_playback_not_started(self, mock_server, mock_gtts, mock_chromecast, mock_zeroconf, mock_local_ip):
         """Test notification returns false when Chromecast fails to start playback."""
         mock_cast = MagicMock()
         mock_cast_info = MagicMock()
@@ -155,11 +157,12 @@ class TestMonitor(unittest.TestCase):
                     success = notify_google_home("Test message")
                 self.assertFalse(success)
 
+    @patch("src.notify.get_local_ip", return_value="127.0.0.1")
     @patch("src.notify.zeroconf.Zeroconf")
     @patch("src.notify.pychromecast")
     @patch("src.notify.gTTS")
     @patch("src.notify.http.server.HTTPServer")
-    def test_notify_google_home_not_found(self, mock_server, mock_gtts, mock_chromecast, mock_zeroconf):
+    def test_notify_google_home_not_found(self, mock_server, mock_gtts, mock_chromecast, mock_zeroconf, mock_local_ip):
         """Test notification when the Google Home device is not found."""
         mock_browser = MagicMock()
         mock_chromecast.discovery.CastBrowser.return_value = mock_browser
@@ -172,16 +175,43 @@ class TestMonitor(unittest.TestCase):
         self.assertFalse(success)
         mock_browser.stop_discovery.assert_called_once()
 
+    @patch("src.notify.get_local_ip", return_value="127.0.0.1")
     @patch("src.notify.zeroconf.Zeroconf")
     @patch("src.notify.pychromecast")
     @patch("src.notify.gTTS")
     @patch("src.notify.http.server.HTTPServer")
-    def test_notify_google_home_exception(self, mock_server, mock_g, mock_chromecast, mock_zeroconf):
+    def test_notify_google_home_exception(self, mock_server, mock_g, mock_chromecast, mock_zeroconf, mock_local_ip):
         """Test notification handles exceptions gracefully."""
         mock_chromecast.discovery.CastBrowser.side_effect = Exception("Network discovery failed")
         
         success = notify_google_home("Test message")
         self.assertFalse(success)
+
+    @patch("src.monitor.scheduler")
+    @patch("src.monitor.is_quiet_hour", return_value=False)
+    @patch("src.monitor.get_eur_to_sek", return_value=11.0)
+    @patch("src.monitor.fetch_quarter_prices")
+    def test_plan_day_force_summary_schedules_when_cached(
+        self, mock_fetch, mock_fx, mock_quiet, mock_scheduler
+    ):
+        """Summary job is scheduled on startup even when prices come from cache."""
+        from src.monitor import plan_day
+
+        tz = "Europe/Stockholm"
+        times = pd.date_range(pd.Timestamp("2026-04-19", tz=tz), periods=4, freq="1h")
+        mock_prices = pd.Series([50.0, 80.0, 60.0, 70.0], index=times)
+        # Simulate cached prices (is_new_fetch=False)
+        mock_fetch.return_value = (mock_prices, False)
+
+        # force_summary=True → summary must be scheduled despite is_new_fetch=False
+        plan_day(date(2026, 4, 19), force_summary=True)
+        self.assertTrue(mock_scheduler.add_job.called)
+
+        # Reset and verify that without force_summary, no job is added
+        mock_scheduler.reset_mock()
+        plan_day(date(2026, 4, 19), force_summary=False)
+        # No summary job (is_new_fetch=False), no alert jobs (all times in the past)
+        mock_scheduler.add_job.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()

@@ -71,16 +71,22 @@ def fetch_quarter_prices(target_date: date) -> tuple[Any, bool]:
 
 
 def get_eur_to_sek(target_date: date) -> float:
-    """Fetch the live EUR/SEK exchange rate with fallback to a hardcoded default."""
-    target_date_str = target_date.isoformat()
-    today, tomorrow = date.today(), date.today() + timedelta(days=1)
+    """Fetch the live EUR/SEK exchange rate with fallback to a hardcoded default.
 
-    if target_date in (today, tomorrow):
+    The Frankfurter /latest endpoint always returns *today's* rate, so the
+    cache is intentionally keyed on today's date only.  For any other
+    target_date we still fetch live but skip the cache to avoid storing a
+    rate under a future date and serving it as "fresh" the next day.
+    """
+    today = date.today()
+    today_str = today.isoformat()
+
+    if target_date == today:
         if os.path.exists(FX_CACHE_FILE):
             try:
                 with open(FX_CACHE_FILE, "r") as f:
                     cached_data = json.load(f)
-                if cached_data.get("date") == target_date_str:
+                if cached_data.get("date") == today_str:
                     rate = cached_data.get("rate")
                     if isinstance(rate, (int, float)):
                         return float(rate)
@@ -95,10 +101,10 @@ def get_eur_to_sek(target_date: date) -> float:
         r.raise_for_status()
         rate = r.json()["rates"]["SEK"]
 
-        if target_date in (today, tomorrow):
+        if target_date == today:
             try:
                 with open(FX_CACHE_FILE, "w") as f:
-                    json.dump({"date": target_date_str, "rate": rate}, f)
+                    json.dump({"date": today_str, "rate": rate}, f)
             except Exception as e:
                 log.warning("Failed to save FX cache: %s", e)
 

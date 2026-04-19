@@ -166,7 +166,7 @@ def notify_google_home(message: str) -> bool:
         return True
 
     except Exception as e:
-        log.error("Notification failed: %s", e)
+        log.exception("Notification failed: %s", e)
         return False
     finally:
         if server:
