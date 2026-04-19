@@ -82,7 +82,6 @@ def plan_day(target_date: date) -> None:
     - An immediate daily summary (if prices were just fetched, outside quiet hours).
     - One-shot alerts at each transition into a high-price window.
     """
-    import pandas as pd  # noqa: PLC0415 — kept here to avoid a hard top-level import
     try:
         prices_eur, is_new_fetch = fetch_quarter_prices(target_date)
         if prices_eur.empty:
@@ -91,6 +90,7 @@ def plan_day(target_date: date) -> None:
 
         fx = get_eur_to_sek(target_date)
         prices_sek = prices_eur.map(lambda v: eur_mwh_to_sek_kwh(float(v), fx))
+        del prices_eur  # raw EUR series no longer needed; free the memory
 
         daily_max_sek = float(prices_sek.max())
         daily_min_sek = float(prices_sek.min())
