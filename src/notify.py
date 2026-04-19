@@ -84,19 +84,21 @@ def notify_google_home(message: str) -> bool:
 
     Returns True on success, False on any failure.
     """
-    log.info("Generating TTS audio ...")
-    tts = gTTS(text=message, lang=TTS_LANGUAGE)
-
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
-        tts.save(tmp.name)
-        audio_path = tmp.name
-
-    server, audio_url = _serve_file(audio_path, SERVE_PORT)
-    log.info("Serving audio: %s", audio_url)
-
+    audio_path = None
+    server = None
     browser = None
     zconf = None
     try:
+        log.info("Generating TTS audio ...")
+        tts = gTTS(text=message, lang=TTS_LANGUAGE)
+
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+            tts.save(tmp.name)
+            audio_path = tmp.name
+
+        server, audio_url = _serve_file(audio_path, SERVE_PORT)
+        log.info("Serving audio: %s", audio_url)
+
         log.info("Connecting to Google Home: '%s' ...", GOOGLE_HOME_NAME)
 
         cast = None
@@ -104,7 +106,9 @@ def notify_google_home(message: str) -> bool:
 
         def add_callback(uuid, service):
             nonlocal cast
-            cast_info = browser.devices[uuid]
+            cast_info = browser.devices.get(uuid)
+            if cast_info is None:
+                return
             if cast_info.friendly_name == GOOGLE_HOME_NAME:
                 cast = pychromecast.get_chromecast_from_cast_info(cast_info, zconf)
                 discover_complete.set()
@@ -165,10 +169,12 @@ def notify_google_home(message: str) -> bool:
         log.error("Notification failed: %s", e)
         return False
     finally:
-        server.shutdown()
+        if server:
+            server.shutdown()
+            server.server_close()
         if browser:
             browser.stop_discovery()
         if zconf:
             zconf.close()
-        if os.path.exists(audio_path):
+        if audio_path and os.path.exists(audio_path):
             os.unlink(audio_path)

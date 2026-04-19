@@ -81,7 +81,10 @@ def get_eur_to_sek(target_date: date) -> float:
                 with open(FX_CACHE_FILE, "r") as f:
                     cached_data = json.load(f)
                 if cached_data.get("date") == target_date_str:
-                    return cached_data.get("rate")
+                    rate = cached_data.get("rate")
+                    if isinstance(rate, (int, float)):
+                        return float(rate)
+                    log.warning("Invalid rate in FX cache (%r) — refetching.", rate)
             except Exception as e:
                 log.warning("Failed to load FX cache: %s", e)
 
