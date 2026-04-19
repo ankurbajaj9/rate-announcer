@@ -226,11 +226,15 @@ def notify_google_home(message: str) -> bool:
         mc.block_until_active(timeout=30)
 
         playback_ready = False
-        for _ in range(20):  # up to 10 seconds
+        for _ in range(20):  # 10 seconds total (20 x 0.5s)
             mc.update_status()
             status = getattr(mc, "status", None)
-            state = getattr(status, "player_state", None)
-            idle_reason = getattr(status, "idle_reason", None)
+            if status is None:
+                time.sleep(0.5)
+                continue
+
+            state = status.player_state
+            idle_reason = status.idle_reason
 
             if state in {"PLAYING", "BUFFERING", "PAUSED"}:
                 playback_ready = True
