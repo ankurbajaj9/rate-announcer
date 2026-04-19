@@ -222,8 +222,26 @@ def notify_google_home(message: str) -> bool:
         cast.wait()
         
         mc = cast.media_controller
-        mc.play_media(audio_url, "audio/mp3")
+        mc.play_media(audio_url, "audio/mpeg", stream_type="BUFFERED")
         mc.block_until_active(timeout=30)
+
+        playback_ready = False
+        for _ in range(20):  # up to 10 seconds
+            mc.update_status()
+            status = getattr(mc, "status", None)
+            state = getattr(status, "player_state", None)
+            idle_reason = getattr(status, "idle_reason", None)
+
+            if state in {"PLAYING", "BUFFERING", "PAUSED"}:
+                playback_ready = True
+                break
+            if state == "IDLE" and idle_reason in {"ERROR", "CANCELLED", "INTERRUPTED"}:
+                break
+            time.sleep(0.5)
+
+        if not playback_ready:
+            log.error("Chromecast did not start playback for '%s'.", GOOGLE_HOME_NAME)
+            return False
         
         # Estimate message duration
         wait_time = max(10, len(message) // 8)

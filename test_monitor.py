@@ -104,6 +104,8 @@ class TestMonitor(unittest.TestCase):
         
         mock_chromecast.discovery.CastBrowser.return_value = mock_browser
         mock_chromecast.get_chromecast_from_cast_info.return_value = mock_cast
+        mock_cast.media_controller.status.player_state = "PLAYING"
+        mock_cast.media_controller.status.idle_reason = None
         
         # We need to trigger the callback when start_discovery is called
         def mock_start_discovery():
@@ -125,7 +127,37 @@ class TestMonitor(unittest.TestCase):
             mock_cast.wait.assert_called_once()
             mock_cast.media_controller.play_media.assert_called_once()
             mock_cast.media_controller.block_until_active.assert_called_once()
+            mock_cast.media_controller.update_status.assert_called()
             mock_browser.stop_discovery.assert_called_once()
+
+    @patch("src.monitor.zeroconf.Zeroconf")
+    @patch("src.monitor.pychromecast")
+    @patch("src.monitor.gTTS")
+    @patch("src.monitor.http.server.HTTPServer")
+    def test_notify_google_home_playback_not_started(self, mock_server, mock_gtts, mock_chromecast, mock_zeroconf):
+        """Test notification returns false when Chromecast fails to start playback."""
+        mock_cast = MagicMock()
+        mock_cast_info = MagicMock()
+        mock_cast_info.friendly_name = "Your Google Home Name"
+
+        mock_browser = MagicMock()
+        mock_browser.devices = {"mock_uuid": mock_cast_info}
+
+        mock_chromecast.discovery.CastBrowser.return_value = mock_browser
+        mock_chromecast.get_chromecast_from_cast_info.return_value = mock_cast
+        mock_cast.media_controller.status.player_state = "IDLE"
+        mock_cast.media_controller.status.idle_reason = "ERROR"
+
+        def mock_start_discovery():
+            add_cb = mock_chromecast.discovery.SimpleCastListener.call_args[1]["add_callback"]
+            add_cb("mock_uuid", "mock_service")
+
+        mock_browser.start_discovery.side_effect = mock_start_discovery
+
+        with patch("src.monitor.time.sleep"):
+            success = notify_google_home("Test message")
+
+        self.assertFalse(success)
 
     @patch("src.monitor.zeroconf.Zeroconf")
     @patch("src.monitor.pychromecast")
