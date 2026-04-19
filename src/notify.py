@@ -184,5 +184,5 @@ def notify_google_home(message: str) -> bool:
         if audio_dir and os.path.exists(audio_dir):
             try:
                 os.rmdir(audio_dir)
-            except OSError:
-                pass
+            except OSError as exc:
+                log.warning("Failed to remove temp audio directory %s: %s", audio_dir, exc)
