@@ -198,18 +198,20 @@ class TestMonitor(unittest.TestCase):
         from src.monitor import plan_day
 
         tz = "Europe/Stockholm"
-        times = pd.date_range(pd.Timestamp("2026-04-19", tz=tz), periods=4, freq="1h")
+        # Build timestamps that are always in the past relative to now
+        now_aware = pd.Timestamp.now(tz=tz)
+        times = pd.date_range(now_aware - pd.Timedelta(hours=4), periods=4, freq="1h")
         mock_prices = pd.Series([50.0, 80.0, 60.0, 70.0], index=times)
         # Simulate cached prices (is_new_fetch=False)
         mock_fetch.return_value = (mock_prices, False)
 
         # force_summary=True → summary must be scheduled despite is_new_fetch=False
-        plan_day(date(2026, 4, 19), force_summary=True)
+        plan_day(date.today(), force_summary=True)
         self.assertTrue(mock_scheduler.add_job.called)
 
         # Reset and verify that without force_summary, no job is added
         mock_scheduler.reset_mock()
-        plan_day(date(2026, 4, 19), force_summary=False)
+        plan_day(date.today(), force_summary=False)
         # No summary job (is_new_fetch=False), no alert jobs (all times in the past)
         mock_scheduler.add_job.assert_not_called()
 

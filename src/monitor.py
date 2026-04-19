@@ -167,14 +167,14 @@ def daily_planner_job() -> None:
 def start_scheduler() -> BackgroundScheduler:
     """
     Bootstrap the application:
-    1. Plan today immediately and announce the daily summary regardless of cache.
-    2. Register a daily cron job to plan tomorrow at 14:00.
-    3. Start the background scheduler.
+    1. Register a daily cron job to plan tomorrow at 14:00.
+    2. Start the background scheduler.
+    3. Plan today immediately and announce the daily summary regardless of cache.
     """
-    plan_day(date.today(), force_summary=True)
-
     scheduler.add_job(daily_planner_job, "cron", hour=14, minute=0)
     scheduler.start()
     log.info("Scheduler started. Background monitoring active.")
+
+    plan_day(date.today(), force_summary=True)
     return scheduler
 

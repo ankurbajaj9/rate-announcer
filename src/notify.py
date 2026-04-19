@@ -85,6 +85,7 @@ def notify_google_home(message: str) -> bool:
     Returns True on success, False on any failure.
     """
     audio_path = None
+    audio_dir = None
     server = None
     browser = None
     zconf = None
@@ -92,9 +93,11 @@ def notify_google_home(message: str) -> bool:
         log.info("Generating TTS audio ...")
         tts = gTTS(text=message, lang=TTS_LANGUAGE)
 
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
-            tts.save(tmp.name)
-            audio_path = tmp.name
+        # Create a dedicated temp directory so the HTTP server only exposes one file
+        audio_dir = tempfile.mkdtemp()
+        tmp_fd, audio_path = tempfile.mkstemp(suffix=".mp3", dir=audio_dir)
+        os.close(tmp_fd)
+        tts.save(audio_path)
 
         server, audio_url = _serve_file(audio_path, SERVE_PORT)
         log.info("Serving audio: %s", audio_url)
@@ -178,3 +181,8 @@ def notify_google_home(message: str) -> bool:
             zconf.close()
         if audio_path and os.path.exists(audio_path):
             os.unlink(audio_path)
+        if audio_dir and os.path.exists(audio_dir):
+            try:
+                os.rmdir(audio_dir)
+            except OSError:
+                pass

@@ -101,6 +101,15 @@ def get_eur_to_sek(target_date: date) -> float:
         r.raise_for_status()
         rate = r.json()["rates"]["SEK"]
 
+        if not isinstance(rate, (int, float)):
+            log.warning(
+                "Unexpected rate value from Frankfurter API (%r) — using fallback rate %.1f SEK/EUR",
+                rate, _FX_FALLBACK_RATE,
+            )
+            return _FX_FALLBACK_RATE
+
+        rate = float(rate)
+
         if target_date == today:
             try:
                 with open(FX_CACHE_FILE, "w") as f:
