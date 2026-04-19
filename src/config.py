@@ -12,7 +12,7 @@ GOOGLE_HOME_NAME = os.getenv("GOOGLE_HOME_NAME", "Your Google Home Name")
 TTS_LANGUAGE = os.getenv("TTS_LANGUAGE", "en")
 
 # Threshold and Alert Configuration
-THRESHOLD_PERCENT = float(os.getenv("THRESHOLD_PERCENT", "0.80"))
+THRESHOLD_PERCENT = float(os.getenv("THRESHOLD_PERCENT", "0.75"))
 # Reserved for future cooldown / deduplication logic
 NOTIFICATION_COOLDOWN_SEC = int(os.getenv("NOTIFICATION_COOLDOWN_SEC", "3600"))
 # Reserved for future announcement windowing logic
