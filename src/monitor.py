@@ -57,11 +57,13 @@ def _build_summary_message(
         high:     (price_ore, HH:MM) for the daily maximum.
         low:      (price_ore, HH:MM) for the daily minimum.
     """
+    high_price, high_time = high
+    low_price, low_time = low
     return (
         f"I have fetched the electricity rates for {day_word}. "
         f"The average price is {avg_ore} öre per kilowatt hour. "
-        f"The maximum price will be {high[0]} öre at {high[1]}, "
-        f"and the minimum will be {low[0]} öre at {low[1]}."
+        f"The maximum price will be {high_price} öre at {high_time}, "
+        f"and the minimum will be {low_price} öre at {low_time}."
     )
 
 
