@@ -45,7 +45,7 @@ log = logging.getLogger(__name__)
 
 scheduler = BackgroundScheduler()
 PLAYBACK_CHECK_INTERVAL_SEC = 0.5
-MAX_PLAYBACK_CHECKS = 20
+MAX_PLAYBACK_CHECK_ATTEMPTS = 20
 
 # ── Helpers ──────────────────────────────────
 
@@ -224,12 +224,12 @@ def notify_google_home(message: str) -> bool:
         cast.wait()
         
         mc = cast.media_controller
-        # TTS is served as a finite MP3 file, so BUFFERED is the appropriate stream type.
+        # TTS is a finite MP3 file; use Chromecast-compatible audio/mpeg as BUFFERED media.
         mc.play_media(audio_url, "audio/mpeg", stream_type="BUFFERED")
         mc.block_until_active(timeout=30)
 
         playback_ready = False
-        for _ in range(MAX_PLAYBACK_CHECKS):
+        for _ in range(MAX_PLAYBACK_CHECK_ATTEMPTS):
             mc.update_status()
             status = mc.status
             if status is None:

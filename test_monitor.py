@@ -145,8 +145,6 @@ class TestMonitor(unittest.TestCase):
 
         mock_chromecast.discovery.CastBrowser.return_value = mock_browser
         mock_chromecast.get_chromecast_from_cast_info.return_value = mock_cast
-        mock_cast.media_controller.status.player_state = "IDLE"
-        mock_cast.media_controller.status.idle_reason = "ERROR"
 
         def mock_start_discovery():
             add_cb = mock_chromecast.discovery.SimpleCastListener.call_args[1]["add_callback"]
@@ -154,10 +152,13 @@ class TestMonitor(unittest.TestCase):
 
         mock_browser.start_discovery.side_effect = mock_start_discovery
 
-        with patch("src.monitor.time.sleep"):
-            success = notify_google_home("Test message")
-
-        self.assertFalse(success)
+        for idle_reason in ("ERROR", "CANCELLED", "INTERRUPTED"):
+            mock_cast.media_controller.status.player_state = "IDLE"
+            mock_cast.media_controller.status.idle_reason = idle_reason
+            with self.subTest(idle_reason=idle_reason):
+                with patch("src.monitor.time.sleep"):
+                    success = notify_google_home("Test message")
+                self.assertFalse(success)
 
     @patch("src.monitor.zeroconf.Zeroconf")
     @patch("src.monitor.pychromecast")
