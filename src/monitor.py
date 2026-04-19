@@ -181,6 +181,9 @@ def _serve_file(filepath: str, port: int):
 
 def notify_google_home(message: str) -> bool:
     """Speak the message via Google Home using TTS and Chromecast."""
+    playback_check_interval_sec = 0.5
+    max_playback_checks = 20
+
     log.info("Generating TTS audio ...")
     tts = gTTS(text=message, lang=TTS_LANGUAGE)
     
@@ -226,11 +229,11 @@ def notify_google_home(message: str) -> bool:
         mc.block_until_active(timeout=30)
 
         playback_ready = False
-        for _ in range(20):  # 10 seconds total (20 x 0.5s)
+        for _ in range(max_playback_checks):
             mc.update_status()
             status = mc.status
             if status is None:
-                time.sleep(0.5)
+                time.sleep(playback_check_interval_sec)
                 continue
 
             state = status.player_state
@@ -241,7 +244,7 @@ def notify_google_home(message: str) -> bool:
                 break
             if state == "IDLE" and idle_reason in {"ERROR", "CANCELLED", "INTERRUPTED"}:
                 break
-            time.sleep(0.5)
+            time.sleep(playback_check_interval_sec)
 
         if not playback_ready:
             log.error("Chromecast did not start playback for '%s'.", GOOGLE_HOME_NAME)
