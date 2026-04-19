@@ -228,7 +228,7 @@ def notify_google_home(message: str) -> bool:
         playback_ready = False
         for _ in range(20):  # 10 seconds total (20 x 0.5s)
             mc.update_status()
-            status = getattr(mc, "status", None)
+            status = mc.status
             if status is None:
                 time.sleep(0.5)
                 continue
