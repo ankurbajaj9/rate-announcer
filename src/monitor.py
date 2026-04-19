@@ -44,6 +44,8 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 scheduler = BackgroundScheduler()
+PLAYBACK_CHECK_INTERVAL_SEC = 0.5
+MAX_PLAYBACK_CHECKS = 20
 
 # ── Helpers ──────────────────────────────────
 
@@ -181,9 +183,6 @@ def _serve_file(filepath: str, port: int):
 
 def notify_google_home(message: str) -> bool:
     """Speak the message via Google Home using TTS and Chromecast."""
-    playback_check_interval_sec = 0.5
-    max_playback_checks = 20
-
     log.info("Generating TTS audio ...")
     tts = gTTS(text=message, lang=TTS_LANGUAGE)
     
@@ -225,15 +224,16 @@ def notify_google_home(message: str) -> bool:
         cast.wait()
         
         mc = cast.media_controller
+        # TTS is served as a finite MP3 file, so BUFFERED is the appropriate stream type.
         mc.play_media(audio_url, "audio/mpeg", stream_type="BUFFERED")
         mc.block_until_active(timeout=30)
 
         playback_ready = False
-        for _ in range(max_playback_checks):
+        for _ in range(MAX_PLAYBACK_CHECKS):
             mc.update_status()
             status = mc.status
             if status is None:
-                time.sleep(playback_check_interval_sec)
+                time.sleep(PLAYBACK_CHECK_INTERVAL_SEC)
                 continue
 
             state = status.player_state
@@ -243,8 +243,13 @@ def notify_google_home(message: str) -> bool:
                 playback_ready = True
                 break
             if state == "IDLE" and idle_reason in {"ERROR", "CANCELLED", "INTERRUPTED"}:
+                log.error(
+                    "Chromecast playback ended with idle_reason='%s' for '%s'.",
+                    idle_reason,
+                    GOOGLE_HOME_NAME,
+                )
                 break
-            time.sleep(playback_check_interval_sec)
+            time.sleep(PLAYBACK_CHECK_INTERVAL_SEC)
 
         if not playback_ready:
             log.error("Chromecast did not start playback for '%s'.", GOOGLE_HOME_NAME)
