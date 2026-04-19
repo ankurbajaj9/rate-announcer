@@ -2,19 +2,15 @@
 import sys
 import pandas as pd
 from datetime import date
-from src.monitor import (
-    fetch_quarter_prices,
-    get_eur_to_sek,
-    eur_mwh_to_sek_kwh,
-    notify_google_home
-)
+from src.prices import fetch_quarter_prices, get_eur_to_sek, eur_mwh_to_sek_kwh
+from src.notify import notify_google_home
 
 def announce_current_rate():
     print("Fetching current electricity rate...")
     try:
         today = date.today()
-        # Fetch today's prices
-        prices_eur = fetch_quarter_prices(today)
+        # Fetch today's prices (returns (prices, is_new_fetch))
+        prices_eur, _ = fetch_quarter_prices(today)
         if prices_eur.empty:
             print("No price data available for today.")
             return

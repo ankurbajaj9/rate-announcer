@@ -10,9 +10,9 @@
 - [x] Announce daily summary with max, min, and average rates
 - [x] Add comprehensive unit tests with mocked Google Home discovery ([test_monitor.py](test_monitor.py))
 - [x] Implement CLI script for manually testing announcements ([test_announce.py](test_announce.py))
-
-## In Progress
-- [ ] Finalize project cleanup (removing legacy files)
+- [x] Refactor `src/monitor.py` into focused modules: [src/prices.py](src/prices.py) (ENTSO-E + FX), [src/notify.py](src/notify.py) (TTS + Chromecast), [src/monitor.py](src/monitor.py) (scheduling)
+- [x] Move hardcoded cache paths and scheduling delay into [src/config.py](src/config.py)
+- [x] Finalize project cleanup — removed legacy discovery scripts (`test_discovery*.py`)
 
 ## To-do
 - [ ] Add more comprehensive logging options
