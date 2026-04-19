@@ -109,8 +109,10 @@ def plan_day(target_date: date, force_summary: bool = False) -> None:
         daily_max_sek = float(prices_sek.max())
         daily_min_sek = float(prices_sek.min())
         daily_avg_sek = float(prices_sek.mean())
-        high = (round(daily_max_sek * 100, 1), prices_sek.idxmax().strftime("%H:%M"))
-        low = (round(daily_min_sek * 100, 1), prices_sek.idxmin().strftime("%H:%M"))
+        high_time = prices_sek.idxmax().strftime("%H:%M")
+        low_time = prices_sek.idxmin().strftime("%H:%M")
+        high = (round(daily_max_sek * 100, 1), high_time)
+        low = (round(daily_min_sek * 100, 1), low_time)
         threshold = daily_max_sek * THRESHOLD_PERCENT
 
         log.info(
