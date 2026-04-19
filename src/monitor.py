@@ -76,10 +76,11 @@ def _find_drop_time(prices_sek, threshold: float, from_index: int) -> datetime |
     return None
 
 
-def plan_day(target_date: date) -> None:
+def plan_day(target_date: date, force_summary: bool = False) -> None:
     """
     Fetch prices and FX for *target_date*, then schedule notifications:
-    - An immediate daily summary (if prices were just fetched, outside quiet hours).
+    - A daily summary outside quiet hours (always when *force_summary* is True,
+      otherwise only when prices were just fetched for the first time today).
     - One-shot alerts at each transition into a high-price window.
     """
     try:
@@ -102,8 +103,9 @@ def plan_day(target_date: date) -> None:
             target_date, daily_max_sek, THRESHOLD_PERCENT * 100, threshold,
         )
 
-        # Announce the daily summary if rates were just fetched and it is not a quiet hour
-        if is_new_fetch and not is_quiet_hour(datetime.now()):
+        # Announce the daily summary on startup (force_summary) or when rates are
+        # newly fetched, provided it is not a quiet hour.
+        if (force_summary or is_new_fetch) and not is_quiet_hour(datetime.now()):
             day_word = "today" if target_date == date.today() else "tomorrow"
             summary_msg = _build_summary_message(
                 day_word,
@@ -165,11 +167,11 @@ def daily_planner_job() -> None:
 def start_scheduler() -> BackgroundScheduler:
     """
     Bootstrap the application:
-    1. Plan today immediately (picks up any remaining peaks).
+    1. Plan today immediately and announce the daily summary regardless of cache.
     2. Register a daily cron job to plan tomorrow at 14:00.
     3. Start the background scheduler.
     """
-    plan_day(date.today())
+    plan_day(date.today(), force_summary=True)
 
     scheduler.add_job(daily_planner_job, "cron", hour=14, minute=0)
     scheduler.start()
