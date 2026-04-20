@@ -252,19 +252,22 @@ class TestMonitor(unittest.TestCase):
         from src.monitor import _log_next_notification
         from src.notify import notify_google_home
 
-        future_soon = datetime.now() + timedelta(minutes=3)
-        future_later = datetime.now() + timedelta(minutes=10)
+        fixed_now = datetime(2026, 4, 20, 5, 0, 0)
+        future_soon = fixed_now + timedelta(minutes=3)
+        future_later = fixed_now + timedelta(minutes=10)
 
         soon_job = MagicMock(func=notify_google_home, next_run_time=future_soon)
         later_job = MagicMock(func=notify_google_home, next_run_time=future_later)
         planner_job = MagicMock(func=MagicMock(), next_run_time=future_soon)
         mock_scheduler.get_jobs.return_value = [later_job, planner_job, soon_job]
 
-        _log_next_notification()
+        with patch("src.monitor.datetime") as mock_datetime:
+            mock_datetime.now.return_value = fixed_now
+            _log_next_notification()
 
         self.assertEqual(mock_log.info.call_args_list[-1].args[0], "Next Google Home notification is scheduled for %s (in %d minute(s)).")
         self.assertEqual(mock_log.info.call_args_list[-1].args[1], future_soon.strftime("%Y-%m-%d %H:%M:%S %Z"))
-        self.assertIn(mock_log.info.call_args_list[-1].args[2], (2, 3))
+        self.assertEqual(mock_log.info.call_args_list[-1].args[2], 3)
 
     @patch("src.monitor.log")
     @patch("src.monitor.scheduler")
@@ -273,10 +276,13 @@ class TestMonitor(unittest.TestCase):
         from src.monitor import _log_next_notification
         from src.notify import notify_google_home
 
-        past_job = MagicMock(func=notify_google_home, next_run_time=datetime.now() - timedelta(minutes=1))
+        fixed_now = datetime(2026, 4, 20, 5, 0, 0)
+        past_job = MagicMock(func=notify_google_home, next_run_time=fixed_now - timedelta(minutes=1))
         mock_scheduler.get_jobs.return_value = [past_job]
 
-        _log_next_notification()
+        with patch("src.monitor.datetime") as mock_datetime:
+            mock_datetime.now.return_value = fixed_now
+            _log_next_notification()
 
         mock_log.info.assert_called_with("No upcoming Google Home notifications are currently scheduled.")
 
