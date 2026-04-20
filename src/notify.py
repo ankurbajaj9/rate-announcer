@@ -89,6 +89,7 @@ def notify_google_home(message: str) -> bool:
     server = None
     browser = None
     zconf = None
+    cast = None
     try:
         log.info("Generating TTS audio ...")
         tts = gTTS(text=message, lang=TTS_LANGUAGE)
@@ -104,7 +105,6 @@ def notify_google_home(message: str) -> bool:
 
         log.info("Connecting to Google Home: '%s' ...", GOOGLE_HOME_NAME)
 
-        cast = None
         discover_complete = threading.Event()
 
         def add_callback(uuid, service):
@@ -175,6 +175,11 @@ def notify_google_home(message: str) -> bool:
         if server:
             server.shutdown()
             server.server_close()
+        if cast:
+            try:
+                cast.disconnect(timeout=5)
+            except Exception as exc:
+                log.warning("Failed to disconnect Chromecast cleanly: %s", exc)
         if browser:
             browser.stop_discovery()
         if zconf:
