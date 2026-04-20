@@ -151,6 +151,7 @@ class TestMonitor(unittest.TestCase):
             mock_cast.media_controller.play_media.assert_called_once()
             mock_cast.media_controller.block_until_active.assert_called_once()
             mock_cast.media_controller.update_status.assert_called()
+            mock_cast.disconnect.assert_called_once_with(timeout=5)
             mock_browser.stop_discovery.assert_called_once()
 
     @patch("src.notify.get_local_ip", return_value="127.0.0.1")
@@ -177,12 +178,14 @@ class TestMonitor(unittest.TestCase):
         mock_browser.start_discovery.side_effect = mock_start_discovery
 
         for idle_reason in ("ERROR", "CANCELLED", "INTERRUPTED"):
+            mock_cast.reset_mock()
             mock_cast.media_controller.status.player_state = "IDLE"
             mock_cast.media_controller.status.idle_reason = idle_reason
             with self.subTest(idle_reason=idle_reason):
                 with patch("src.notify.time.sleep"):
                     success = notify_google_home("Test message")
                 self.assertFalse(success)
+                mock_cast.disconnect.assert_called_once_with(timeout=5)
 
     @patch("src.notify.get_local_ip", return_value="127.0.0.1")
     @patch("src.notify.zeroconf.Zeroconf")
