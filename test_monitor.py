@@ -264,6 +264,7 @@ class TestMonitor(unittest.TestCase):
 
         self.assertEqual(mock_log.info.call_args_list[-1].args[0], "Next Google Home notification is scheduled for %s (in %d minute(s)).")
         self.assertEqual(mock_log.info.call_args_list[-1].args[1], future_soon.strftime("%Y-%m-%d %H:%M:%S %Z"))
+        self.assertIn(mock_log.info.call_args_list[-1].args[2], (2, 3))
 
     @patch("src.monitor.log")
     @patch("src.monitor.scheduler")
