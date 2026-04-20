@@ -91,6 +91,30 @@ def _find_drop_time(prices_sek, threshold: float, from_index: int) -> datetime |
     return None
 
 
+def _log_next_notification() -> None:
+    """Log when the next Google Home notification is scheduled."""
+    now_ts = datetime.now().timestamp()
+    upcoming_runs = [
+        run_time
+        for job in scheduler.get_jobs()
+        if job.func == notify_google_home
+        for run_time in [job.next_run_time]
+        if run_time and run_time.timestamp() > now_ts
+    ]
+
+    if not upcoming_runs:
+        log.info("No upcoming Google Home notifications are currently scheduled.")
+        return
+
+    next_run = min(upcoming_runs, key=lambda dt: dt.timestamp())
+    minutes_until = int((next_run.timestamp() - now_ts) // 60)
+    log.info(
+        "Next Google Home notification is scheduled for %s (in %d minute(s)).",
+        next_run.strftime("%Y-%m-%d %H:%M:%S %Z"),
+        minutes_until,
+    )
+
+
 def plan_day(target_date: date, force_summary: bool = False) -> None:
     """
     Fetch prices and FX for *target_date*, then schedule notifications:
@@ -195,5 +219,5 @@ def start_scheduler() -> BackgroundScheduler:
     log.info("Scheduler started. Background monitoring active.")
 
     plan_day(date.today(), force_summary=True)
+    _log_next_notification()
     return scheduler
-

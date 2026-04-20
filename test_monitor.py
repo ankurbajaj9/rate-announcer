@@ -1,7 +1,7 @@
 import os
 import unittest
 from unittest.mock import patch, MagicMock, mock_open
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import pandas as pd
 
 from src.monitor import _build_summary_message, is_quiet_hour
@@ -244,6 +244,53 @@ class TestMonitor(unittest.TestCase):
         plan_day(date.today(), force_summary=False)
         # No summary job (is_new_fetch=False), no alert jobs (all times in the past)
         mock_scheduler.add_job.assert_not_called()
+
+    @patch("src.monitor.log")
+    @patch("src.monitor.scheduler")
+    def test_log_next_notification_logs_next_run(self, mock_scheduler, mock_log):
+        """Logs the nearest upcoming Google Home notification."""
+        from src.monitor import _log_next_notification
+        from src.notify import notify_google_home
+
+        future_soon = datetime.now() + timedelta(minutes=3)
+        future_later = datetime.now() + timedelta(minutes=10)
+
+        soon_job = MagicMock(func=notify_google_home, next_run_time=future_soon)
+        later_job = MagicMock(func=notify_google_home, next_run_time=future_later)
+        planner_job = MagicMock(func=MagicMock(), next_run_time=future_soon)
+        mock_scheduler.get_jobs.return_value = [later_job, planner_job, soon_job]
+
+        _log_next_notification()
+
+        self.assertEqual(mock_log.info.call_args_list[-1].args[0], "Next Google Home notification is scheduled for %s (in %d minute(s)).")
+        self.assertEqual(mock_log.info.call_args_list[-1].args[1], future_soon.strftime("%Y-%m-%d %H:%M:%S %Z"))
+
+    @patch("src.monitor.log")
+    @patch("src.monitor.scheduler")
+    def test_log_next_notification_logs_when_none(self, mock_scheduler, mock_log):
+        """Logs when no future Google Home notification is available."""
+        from src.monitor import _log_next_notification
+        from src.notify import notify_google_home
+
+        past_job = MagicMock(func=notify_google_home, next_run_time=datetime.now() - timedelta(minutes=1))
+        mock_scheduler.get_jobs.return_value = [past_job]
+
+        _log_next_notification()
+
+        mock_log.info.assert_called_with("No upcoming Google Home notifications are currently scheduled.")
+
+    @patch("src.monitor._log_next_notification")
+    @patch("src.monitor.plan_day")
+    @patch("src.monitor.scheduler")
+    def test_start_scheduler_reports_next_notification(self, mock_scheduler, mock_plan_day, mock_next_log):
+        """Startup reports next notification timing."""
+        from src.monitor import start_scheduler
+
+        start_scheduler()
+
+        mock_scheduler.start.assert_called_once()
+        mock_plan_day.assert_called_once_with(date.today(), force_summary=True)
+        mock_next_log.assert_called_once()
 
 if __name__ == "__main__":
     unittest.main()
