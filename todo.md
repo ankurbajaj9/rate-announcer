@@ -13,6 +13,7 @@
 - [x] Refactor `src/monitor.py` into focused modules: [src/prices.py](src/prices.py) (ENTSO-E + FX), [src/notify.py](src/notify.py) (TTS + Chromecast), [src/monitor.py](src/monitor.py) (scheduling)
 - [x] Move hardcoded cache paths and scheduling delay into [src/config.py](src/config.py)
 - [x] Finalize project cleanup — removed legacy discovery scripts (`test_discovery*.py`)
+- [x] Refactor `_build_summary_message` to accept `high: tuple[float, str]` and `low: tuple[float, str]` instead of four separate parameters
 
 ## To-do
 - [ ] Add more comprehensive logging options

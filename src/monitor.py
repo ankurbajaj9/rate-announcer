@@ -43,12 +43,27 @@ def is_quiet_hour(dt: datetime) -> bool:
 
 # ── Day planning ─────────────────────────────
 
-def _build_summary_message(day_word: str, avg_ore: float, max_ore: float, min_ore: float) -> str:
-    """Return the daily summary announcement text."""
+def _build_summary_message(
+    day_word: str,
+    avg_ore: float,
+    high: tuple[float, str],
+    low: tuple[float, str],
+) -> str:
+    """Return the daily summary announcement text.
+
+    Args:
+        day_word: "today" or "tomorrow".
+        avg_ore:  Average price in öre/kWh.
+        high:     (price_ore, HH:MM) for the daily maximum.
+        low:      (price_ore, HH:MM) for the daily minimum.
+    """
+    high_price, high_time = high
+    low_price, low_time = low
     return (
         f"I have fetched the electricity rates for {day_word}. "
         f"The average price is {avg_ore} öre per kilowatt hour. "
-        f"The maximum price will be {max_ore} öre, and the minimum will be {min_ore} öre."
+        f"The maximum price will be {high_price} öre at {high_time}, "
+        f"and the minimum will be {low_price} öre at {low_time}."
     )
 
 
@@ -96,6 +111,10 @@ def plan_day(target_date: date, force_summary: bool = False) -> None:
         daily_max_sek = float(prices_sek.max())
         daily_min_sek = float(prices_sek.min())
         daily_avg_sek = float(prices_sek.mean())
+        high_time = prices_sek.idxmax().strftime("%H:%M")
+        low_time = prices_sek.idxmin().strftime("%H:%M")
+        high = (round(daily_max_sek * 100, 1), high_time)
+        low = (round(daily_min_sek * 100, 1), low_time)
         threshold = daily_max_sek * THRESHOLD_PERCENT
 
         log.info(
@@ -110,8 +129,8 @@ def plan_day(target_date: date, force_summary: bool = False) -> None:
             summary_msg = _build_summary_message(
                 day_word,
                 round(daily_avg_sek * 100, 1),
-                round(daily_max_sek * 100, 1),
-                round(daily_min_sek * 100, 1),
+                high,
+                low,
             )
             log.info("Scheduling daily summary notification: %s", summary_msg)
             scheduler.add_job(
