@@ -10,7 +10,7 @@ Serves a dashboard at http://<host>:<WEB_PORT>/ that shows:
 import logging
 import os
 import threading
-from datetime import datetime, timezone
+from datetime import date, datetime
 
 import pandas as pd
 from flask import Flask, jsonify, render_template
@@ -21,6 +21,7 @@ from src.config import (
     THRESHOLD_PERCENT,
     WEB_PORT,
 )
+from src.prices import eur_mwh_to_sek_kwh, get_eur_to_sek
 
 log = logging.getLogger(__name__)
 
@@ -39,15 +40,30 @@ def set_scheduler(scheduler) -> None:
 # ── Data helpers ─────────────────────────────────────────────────────────────
 
 def _load_prices() -> pd.Series | None:
-    """Load today's price series (SEK/kWh) from cache, or return None."""
+    """Load today's price series (SEK/kWh) from cache, or return None.
+
+    The cache stores raw EUR/MWh prices fetched from ENTSO-E.  This function
+    validates that the cached date matches today (to avoid showing stale data
+    after midnight) and converts the series to SEK/kWh using the live FX rate
+    before returning it.
+    """
+    today_str = date.today().isoformat()
     if not os.path.exists(PRICE_CACHE_FILE):
         return None
     try:
         cached = pd.read_pickle(PRICE_CACHE_FILE)
         if isinstance(cached, tuple) and len(cached) == 2:
-            _, prices = cached
-            if isinstance(prices, pd.Series):
-                return prices
+            cached_date, prices_eur = cached
+            if cached_date != today_str:
+                log.warning(
+                    "web: price cache is for %s, not today (%s) — skipping.",
+                    cached_date,
+                    today_str,
+                )
+                return None
+            if isinstance(prices_eur, pd.Series):
+                fx = get_eur_to_sek(date.today())
+                return prices_eur.map(lambda v: eur_mwh_to_sek_kwh(float(v), fx))
     except Exception as exc:
         log.warning("web: failed to load price cache: %s", exc)
     return None
