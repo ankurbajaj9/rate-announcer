@@ -63,9 +63,10 @@ class TestBuildPriceRows(unittest.TestCase):
 
     def test_no_current_slot_when_all_past(self):
         """No row is current when all timestamps are in the past."""
+        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
         prices = self._make_series(
             [0.3, 0.5],
-            start="2000-01-01 00:00",
+            start=yesterday,
         )
         rows = _build_price_rows(prices)
         self.assertFalse(any(r["is_current"] for r in rows))
@@ -203,13 +204,14 @@ class TestLoadPrices(unittest.TestCase):
             self.assertIsNone(_load_prices())
 
     def test_returns_none_when_cache_date_is_stale(self):
-        from datetime import date
+        from datetime import date, timedelta
         from src.web import _load_prices
 
+        yesterday_str = (date.today() - timedelta(days=1)).isoformat()
         tz = "Europe/Stockholm"
-        idx = pd.date_range("2020-01-01", periods=4, freq="15min", tz=tz)
+        idx = pd.date_range(yesterday_str, periods=4, freq="15min", tz=tz)
         stale_series = pd.Series([100.0] * 4, index=idx)
-        stale_cache = ("2020-01-01", stale_series)  # old date
+        stale_cache = (yesterday_str, stale_series)  # yesterday's cache
 
         with patch("src.web.os.path.exists", return_value=True), \
              patch("src.web.pd.read_pickle", return_value=stale_cache):
