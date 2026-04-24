@@ -106,14 +106,17 @@ def notify_google_home(message: str) -> bool:
         log.info("Connecting to Google Home: '%s' ...", GOOGLE_HOME_NAME)
 
         discover_complete = threading.Event()
+        found_host = None
+        found_port = None
 
         def add_callback(uuid, service):
-            nonlocal cast
+            nonlocal found_host, found_port
             cast_info = browser.devices.get(uuid)
             if cast_info is None:
                 return
             if cast_info.friendly_name == GOOGLE_HOME_NAME:
-                cast = pychromecast.get_chromecast_from_cast_info(cast_info, zconf)
+                found_host = cast_info.host
+                found_port = cast_info.port
                 discover_complete.set()
 
         zconf = zeroconf.Zeroconf()
@@ -125,9 +128,23 @@ def notify_google_home(message: str) -> bool:
 
         discover_complete.wait(timeout=10.0)
 
-        if not cast:
+        # Tear down mDNS discovery immediately after the device is found.
+        # Closing Zeroconf here ensures the cast object (created below via a
+        # direct host connection) never holds a reference to a stopped Zeroconf
+        # instance, which would otherwise trigger
+        # "AssertionError: Zeroconf instance loop must be running" whenever
+        # PyChromecast attempts a reconnect inside its socket-client thread.
+        browser.stop_discovery()
+        browser = None
+        zconf.close()
+        zconf = None
+
+        if not found_host:
             log.error("Google Home '%s' not found.", GOOGLE_HOME_NAME)
             return False
+
+        # Connect directly via IP so reconnections bypass mDNS entirely.
+        cast = pychromecast.get_chromecast_from_host((found_host, found_port))
 
         cast.wait()
 

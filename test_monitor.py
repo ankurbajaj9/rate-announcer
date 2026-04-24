@@ -121,12 +121,14 @@ class TestMonitor(unittest.TestCase):
         mock_cast = MagicMock()
         mock_cast_info = MagicMock()
         mock_cast_info.friendly_name = "Your Google Home Name"
-        
+        mock_cast_info.host = "192.168.1.100"
+        mock_cast_info.port = 8009
+
         mock_browser = MagicMock()
         mock_browser.devices = {"mock_uuid": mock_cast_info}
         
         mock_chromecast.discovery.CastBrowser.return_value = mock_browser
-        mock_chromecast.get_chromecast_from_cast_info.return_value = mock_cast
+        mock_chromecast.get_chromecast_from_host.return_value = mock_cast
         mock_cast.media_controller.status.player_state = "PLAYING"
         mock_cast.media_controller.status.idle_reason = None
         
@@ -147,12 +149,16 @@ class TestMonitor(unittest.TestCase):
             self.assertTrue(success)
             mock_gtts.assert_called_once()
             mock_chromecast.discovery.CastBrowser.assert_called_once()
+            # Discovery is torn down immediately; cast is created via direct IP.
+            mock_browser.stop_discovery.assert_called_once()
+            mock_chromecast.get_chromecast_from_host.assert_called_once_with(
+                ("192.168.1.100", 8009)
+            )
             mock_cast.wait.assert_called_once()
             mock_cast.media_controller.play_media.assert_called_once()
             mock_cast.media_controller.block_until_active.assert_called_once()
             mock_cast.media_controller.update_status.assert_called()
             mock_cast.disconnect.assert_called_once_with(timeout=5)
-            mock_browser.stop_discovery.assert_called_once()
 
     @patch("src.notify.get_local_ip", return_value="127.0.0.1")
     @patch("src.notify.zeroconf.Zeroconf")
@@ -164,12 +170,14 @@ class TestMonitor(unittest.TestCase):
         mock_cast = MagicMock()
         mock_cast_info = MagicMock()
         mock_cast_info.friendly_name = "Your Google Home Name"
+        mock_cast_info.host = "192.168.1.100"
+        mock_cast_info.port = 8009
 
         mock_browser = MagicMock()
         mock_browser.devices = {"mock_uuid": mock_cast_info}
 
         mock_chromecast.discovery.CastBrowser.return_value = mock_browser
-        mock_chromecast.get_chromecast_from_cast_info.return_value = mock_cast
+        mock_chromecast.get_chromecast_from_host.return_value = mock_cast
 
         def mock_start_discovery():
             add_cb = mock_chromecast.discovery.SimpleCastListener.call_args[1]["add_callback"]
