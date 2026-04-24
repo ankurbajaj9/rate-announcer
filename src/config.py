@@ -33,3 +33,6 @@ FX_CACHE_FILE = os.getenv("FX_CACHE_FILE", "/tmp/rate_announcer_fx.json")
 
 # Scheduling
 SUMMARY_ANNOUNCE_DELAY_SEC = int(os.getenv("SUMMARY_ANNOUNCE_DELAY_SEC", "2"))
+
+# Web UI
+WEB_PORT = int(os.getenv("WEB_PORT", "8080"))
