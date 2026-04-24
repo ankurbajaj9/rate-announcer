@@ -24,7 +24,7 @@ from src.config import (
 
 log = logging.getLogger(__name__)
 
-app = Flask(__name__, template_folder="templates")
+app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), "templates"))
 
 # Injected by main.py after the scheduler is started
 _scheduler = None
@@ -113,7 +113,12 @@ def _build_price_rows(prices: pd.Series) -> list[dict]:
 
         # Is this the currently active 15-min slot?
         ts_dt = ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
-        is_current = ts_dt <= now < ts_dt + pd.Timedelta(minutes=15)
+        # Ensure both datetimes share the same tzinfo before comparing
+        if ts_dt.tzinfo is not None:
+            now_cmp = now
+        else:
+            now_cmp = datetime.now()
+        is_current = ts_dt <= now_cmp < ts_dt + pd.Timedelta(minutes=15)
 
         rows.append(
             {
@@ -206,7 +211,13 @@ def api_status():
 # ── Server bootstrap ──────────────────────────────────────────────────────────
 
 def start_web_server() -> None:
-    """Start the Flask development server in a background daemon thread."""
+    """Start the Flask built-in server in a background daemon thread.
+
+    This application runs as a local home-automation service on a private
+    network, so Flask's built-in WSGI server is sufficient.  If you need
+    to expose the dashboard externally, replace this with a production
+    WSGI server (e.g. gunicorn).
+    """
     thread = threading.Thread(
         target=lambda: app.run(host="0.0.0.0", port=WEB_PORT, use_reloader=False),
         daemon=True,
