@@ -10,7 +10,7 @@ Serves a dashboard at http://<host>:<WEB_PORT>/ that shows:
 import logging
 import os
 import threading
-from datetime import datetime, timezone
+from datetime import datetime
 
 import pandas as pd
 from flask import Flask, jsonify, render_template
