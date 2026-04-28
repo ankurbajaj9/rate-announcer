@@ -109,9 +109,16 @@ def notify_google_home(message: str) -> bool:
         found_host = None
         found_port = None
 
+        # Using a single-element list as a mutable cell so add_callback can
+        # safely access the devices dict even after `browser` is set to None.
+        _devices_cell = [None]
+
         def add_callback(uuid, service):
             nonlocal found_host, found_port
-            cast_info = browser.devices.get(uuid)
+            devices = _devices_cell[0]
+            if devices is None:
+                return
+            cast_info = devices.get(uuid)
             if cast_info is None:
                 return
             if cast_info.friendly_name == GOOGLE_HOME_NAME:
@@ -124,6 +131,11 @@ def notify_google_home(message: str) -> bool:
             pychromecast.discovery.SimpleCastListener(add_callback=add_callback),
             zconf,
         )
+        # Populate the cell with the devices dict reference before starting
+        # discovery. This ensures any in-flight callback fired after
+        # `browser = None` below can still safely look up device info
+        # without raising AttributeError.
+        _devices_cell[0] = browser.devices
         browser.start_discovery()
 
         discover_complete.wait(timeout=10.0)
@@ -139,8 +151,13 @@ def notify_google_home(message: str) -> bool:
         zconf.close()
         zconf = None
 
-        if not found_host:
-            log.error("Google Home '%s' not found.", GOOGLE_HOME_NAME)
+        if not found_host or not found_port:
+            log.error(
+                "Google Home '%s' not found (host=%r, port=%r).",
+                GOOGLE_HOME_NAME,
+                found_host,
+                found_port,
+            )
             return False
 
         # Connect directly via IP so reconnections bypass mDNS entirely.
