@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rate Announcer — Price Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #f1f5f9;
+    }
+    header span.badge {
+      font-size: 0.7rem;
+      background: #1e40af;
+      color: #bfdbfe;
+      padding: 0.2rem 0.55rem;
+      border-radius: 9999px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 0.75rem;
+      padding: 1.1rem 1.25rem;
+    }
+    .card .label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #94a3b8;
+      margin-bottom: 0.35rem;
+    }
+    .card .value {
+      font-size: 1.9rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      line-height: 1;
+    }
+    .card .sub {
+      font-size: 0.78rem;
+      color: #64748b;
+      margin-top: 0.3rem;
+    }
+    .card.highlight .value { color: #38bdf8; }
+    .card.warn     .value { color: #fb923c; }
+    .card.ok       .value { color: #4ade80; }
+
+    .section-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.75rem;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 0.75rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    thead tr { background: #0f172a; }
+    th {
+      padding: 0.65rem 1rem;
+      text-align: left;
+      color: #64748b;
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+    tbody tr {
+      border-top: 1px solid #1e293b;
+      transition: background 0.15s;
+    }
+    tbody tr:nth-child(even) { background: #172033; }
+    tbody tr:hover { background: #1e3a5f33; }
+    tbody tr.current-row {
+      background: #1e3a5f !important;
+      border-left: 3px solid #38bdf8;
+    }
+    td {
+      padding: 0.55rem 1rem;
+      white-space: nowrap;
+    }
+    td.time { color: #94a3b8; }
+
+    .pill {
+      display: inline-block;
+      padding: 0.15rem 0.55rem;
+      border-radius: 9999px;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+    .pill-high   { background: #7f1d1d; color: #fca5a5; }
+    .pill-mid    { background: #78350f; color: #fde68a; }
+    .pill-low    { background: #14532d; color: #86efac; }
+    .pill-now    { background: #1e3a5f; color: #7dd3fc; border: 1px solid #38bdf8; }
+
+    .bar-bg {
+      background: #334155;
+      border-radius: 9999px;
+      height: 6px;
+      width: 80px;
+      display: inline-block;
+      vertical-align: middle;
+      margin-left: 0.4rem;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 9999px;
+    }
+
+    footer {
+      margin-top: 1.5rem;
+      font-size: 0.72rem;
+      color: #475569;
+      text-align: center;
+    }
+
+    @media (max-width: 480px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+      .bar-bg { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>⚡ Rate Announcer</h1>
+  <span class="badge">{{ price_area }}</span>
+</header>
+
+<!-- Summary cards -->
+<div class="grid">
+  <div class="card highlight">
+    <div class="label">Current Price</div>
+    <div class="value">{{ current_price }} <small style="font-size:1rem;color:#94a3b8">öre/kWh</small></div>
+    <div class="sub">{{ current_time }}</div>
+  </div>
+
+  <div class="card {% if next_alert %}warn{% else %}ok{% endif %}">
+    <div class="label">Next Announcement</div>
+    <div class="value" style="font-size:1.3rem">{{ next_alert if next_alert else "None scheduled" }}</div>
+    <div class="sub">{{ next_alert_in if next_alert else "All quiet" }}</div>
+  </div>
+
+  <div class="card">
+    <div class="label">Today's Average</div>
+    <div class="value">{{ avg_price }} <small style="font-size:1rem;color:#94a3b8">öre/kWh</small></div>
+    <div class="sub">{{ date_label }}</div>
+  </div>
+
+  <div class="card">
+    <div class="label">Today's Range</div>
+    <div class="value" style="font-size:1.3rem">{{ low_price }}–{{ high_price }}</div>
+    <div class="sub">öre/kWh (low – high)</div>
+  </div>
+</div>
+
+<!-- Price table -->
+<div class="section-title">Today's 15-Min Prices</div>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Price (öre/kWh)</th>
+        <th>Relative</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in prices %}
+      <tr class="{{ 'current-row' if row.is_current else '' }}">
+        <td class="time">{{ row.time }}</td>
+        <td>{{ row.price }}</td>
+        <td>
+          <span style="color:#94a3b8;font-size:0.8rem">{{ row.pct }}%</span>
+          <span class="bar-bg">
+            <span class="bar-fill" style="width:{{ row.pct }}%;background:{{ row.bar_color }}"></span>
+          </span>
+        </td>
+        <td>
+          <span class="pill pill-{{ row.level }}">{{ row.level_label }}</span>
+          {% if row.is_current %}<span class="pill pill-now" style="margin-left:0.25rem">NOW</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<footer>
+  Auto-refreshes every 60 s &nbsp;·&nbsp; Data: ENTSO-E / Frankfurter &nbsp;·&nbsp;
+  Generated {{ generated_at }}
+</footer>
+
+<script>
+  // Auto-refresh the page every 60 seconds
+  setTimeout(() => location.reload(), 60000);
+
+  // Scroll the current-row into view
+  const cur = document.querySelector('.current-row');
+  if (cur) cur.scrollIntoView({ behavior: 'smooth', block: 'center' });
+</script>
+
+</body>
+</html>
