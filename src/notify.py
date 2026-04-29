@@ -21,7 +21,9 @@ import zeroconf
 from gtts import gTTS
 
 from src.config import (
+    GOOGLE_HOME_HOST,
     GOOGLE_HOME_NAME,
+    GOOGLE_HOME_PORT,
     SERVE_PORT,
     TTS_LANGUAGE,
 )
@@ -103,65 +105,87 @@ def notify_google_home(message: str) -> bool:
         server, audio_url = _serve_file(audio_path, SERVE_PORT)
         log.info("Serving audio: %s", audio_url)
 
-        log.info("Connecting to Google Home: '%s' ...", GOOGLE_HOME_NAME)
-
-        discover_complete = threading.Event()
         found_host = None
         found_port = None
+        found_uuid = None
+        found_model_name = None
 
-        # Using a single-element list as a mutable cell so add_callback can
-        # safely access the devices dict even after `browser` is set to None.
-        _devices_cell = [None]
-
-        def add_callback(uuid, service):
-            nonlocal found_host, found_port
-            devices = _devices_cell[0]
-            if devices is None:
-                return
-            cast_info = devices.get(uuid)
-            if cast_info is None:
-                return
-            if cast_info.friendly_name == GOOGLE_HOME_NAME:
-                found_host = cast_info.host
-                found_port = cast_info.port
-                discover_complete.set()
-
-        zconf = zeroconf.Zeroconf()
-        browser = pychromecast.discovery.CastBrowser(
-            pychromecast.discovery.SimpleCastListener(add_callback=add_callback),
-            zconf,
-        )
-        # Populate the cell with the devices dict reference before starting
-        # discovery. This ensures any in-flight callback fired after
-        # `browser = None` below can still safely look up device info
-        # without raising AttributeError.
-        _devices_cell[0] = browser.devices
-        browser.start_discovery()
-
-        discover_complete.wait(timeout=10.0)
-
-        # Tear down mDNS discovery immediately after the device is found.
-        # Closing Zeroconf here ensures the cast object (created below via a
-        # direct host connection) never holds a reference to a stopped Zeroconf
-        # instance, which would otherwise trigger
-        # "AssertionError: Zeroconf instance loop must be running" whenever
-        # PyChromecast attempts a reconnect inside its socket-client thread.
-        browser.stop_discovery()
-        browser = None
-        zconf.close()
-        zconf = None
-
-        if not found_host or not found_port:
-            log.error(
-                "Google Home '%s' not found (host=%r, port=%r).",
+        if GOOGLE_HOME_HOST:
+            # Static IP configured — skip mDNS entirely to avoid discovery
+            # timeouts and Zeroconf reconnect errors.
+            log.info(
+                "Connecting to Google Home '%s' at %s:%d (direct) ...",
                 GOOGLE_HOME_NAME,
-                found_host,
-                found_port,
+                GOOGLE_HOME_HOST,
+                GOOGLE_HOME_PORT,
             )
-            return False
+            found_host = GOOGLE_HOME_HOST
+            found_port = GOOGLE_HOME_PORT
+        else:
+            log.info("Discovering Google Home '%s' via mDNS ...", GOOGLE_HOME_NAME)
+
+            discover_complete = threading.Event()
+
+            # Using a single-element list as a mutable cell so add_callback can
+            # safely access the devices dict even after `browser` is set to None.
+            _devices_cell = [None]
+
+            def add_callback(uuid, service):
+                nonlocal found_host, found_port, found_uuid, found_model_name
+                devices = _devices_cell[0]
+                if devices is None:
+                    return
+                cast_info = devices.get(uuid)
+                if cast_info is None:
+                    return
+                if cast_info.friendly_name == GOOGLE_HOME_NAME:
+                    found_host = cast_info.host
+                    found_port = cast_info.port
+                    found_uuid = cast_info.uuid
+                    found_model_name = cast_info.model_name
+                    discover_complete.set()
+
+            zconf = zeroconf.Zeroconf()
+            browser = pychromecast.discovery.CastBrowser(
+                pychromecast.discovery.SimpleCastListener(add_callback=add_callback),
+                zconf,
+            )
+            # Populate the cell with the devices dict reference before starting
+            # discovery. This ensures any in-flight callback fired after
+            # `browser = None` below can still safely look up device info
+            # without raising AttributeError.
+            _devices_cell[0] = browser.devices
+            browser.start_discovery()
+
+            discover_complete.wait(timeout=10.0)
+
+            # Tear down mDNS discovery immediately after the device is found.
+            # Closing Zeroconf here ensures the cast object (created below via a
+            # direct host connection) never holds a reference to a stopped Zeroconf
+            # instance, which would otherwise trigger
+            # "AssertionError: Zeroconf instance loop must be running" whenever
+            # PyChromecast attempts a reconnect inside its socket-client thread.
+            browser.stop_discovery()
+            browser = None
+            zconf.close()
+            zconf = None
+
+            if not found_host or not found_port:
+                log.error(
+                    "Google Home '%s' not found (host=%r, port=%r).",
+                    GOOGLE_HOME_NAME,
+                    found_host,
+                    found_port,
+                )
+                return False
 
         # Connect directly via IP so reconnections bypass mDNS entirely.
-        cast = pychromecast.get_chromecast_from_host((found_host, found_port))
+        # Pass the full 5-tuple so pychromecast creates a HostServiceInfo
+        # (not an MDNSServiceInfo) — this is what prevents the Zeroconf
+        # reconnect assertion error.
+        cast = pychromecast.get_chromecast_from_host(
+            (found_host, found_port, found_uuid, found_model_name, GOOGLE_HOME_NAME)
+        )
 
         cast.wait()
 
