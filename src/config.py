@@ -9,6 +9,11 @@ PRICE_AREA = os.getenv("PRICE_AREA", "SE_3")
 
 # Google Home Configuration
 GOOGLE_HOME_NAME = os.getenv("GOOGLE_HOME_NAME", "Your Google Home Name")
+# Optional: set to the device's static IP to bypass mDNS discovery entirely.
+# Strongly recommended for production deployments to avoid mDNS timeouts and
+# Zeroconf reconnect errors.
+GOOGLE_HOME_HOST = os.getenv("GOOGLE_HOME_HOST", "")
+GOOGLE_HOME_PORT = int(os.getenv("GOOGLE_HOME_PORT", "8009"))
 TTS_LANGUAGE = os.getenv("TTS_LANGUAGE", "en")
 
 # Threshold and Alert Configuration

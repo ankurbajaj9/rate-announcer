@@ -152,7 +152,7 @@ class TestMonitor(unittest.TestCase):
             # Discovery is torn down immediately; cast is created via direct IP.
             mock_browser.stop_discovery.assert_called_once()
             mock_chromecast.get_chromecast_from_host.assert_called_once_with(
-                ("192.168.1.100", 8009)
+                ("192.168.1.100", 8009, mock_cast_info.uuid, mock_cast_info.model_name, "Your Google Home Name")
             )
             mock_cast.wait.assert_called_once()
             mock_cast.media_controller.play_media.assert_called_once()
@@ -224,6 +224,32 @@ class TestMonitor(unittest.TestCase):
         
         success = notify_google_home("Test message")
         self.assertFalse(success)
+
+    @patch("src.notify.GOOGLE_HOME_HOST", "192.168.0.82")
+    @patch("src.notify.GOOGLE_HOME_PORT", 8009)
+    @patch("src.notify.get_local_ip", return_value="127.0.0.1")
+    @patch("src.notify.pychromecast")
+    @patch("src.notify.gTTS")
+    @patch("src.notify.http.server.HTTPServer")
+    def test_notify_google_home_direct_host(self, mock_server, mock_gtts, mock_chromecast, mock_local_ip):
+        """When GOOGLE_HOME_HOST is set, mDNS discovery is skipped entirely."""
+        mock_cast = MagicMock()
+        mock_chromecast.get_chromecast_from_host.return_value = mock_cast
+        mock_cast.media_controller.status.player_state = "PLAYING"
+        mock_cast.media_controller.status.idle_reason = None
+
+        with patch("src.notify.time.sleep"):
+            success = notify_google_home("Direct host test")
+
+        self.assertTrue(success)
+        # No mDNS browser should have been created
+        mock_chromecast.discovery.CastBrowser.assert_not_called()
+        # Cast must be created with direct host info (None uuid/model_name, name from config)
+        mock_chromecast.get_chromecast_from_host.assert_called_once_with(
+            ("192.168.0.82", 8009, None, None, "Your Google Home Name")
+        )
+        mock_cast.wait.assert_called_once()
+        mock_cast.media_controller.play_media.assert_called_once()
 
     @patch("src.monitor.scheduler")
     @patch("src.monitor.is_quiet_hour", return_value=False)
