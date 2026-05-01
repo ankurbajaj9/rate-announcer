@@ -64,7 +64,7 @@ def _load_prices() -> pd.Series | None:
                 return None
         elif isinstance(cached, tuple) and len(cached) == 2:
             # Backward-compat: old format stored a single (date_str, prices) tuple
-            cached_date, cached_prices = cached
+            cached_date, prices_eur = cached
             if cached_date != today_str:
                 log.warning(
                     "web: price cache is for %s, not today (%s) — skipping.",
@@ -72,7 +72,6 @@ def _load_prices() -> pd.Series | None:
                     today_str,
                 )
                 return None
-            prices_eur = cached_prices
         else:
             return None
 
