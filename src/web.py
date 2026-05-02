@@ -50,7 +50,8 @@ def _load_prices() -> pd.Series | None:
     Supports both the current dict-keyed cache format and the legacy
     ``(date_str, prices)`` tuple format for backward compatibility.
     """
-    today_str = date.today().isoformat()
+    today = date.today()
+    today_str = today.isoformat()
     if not os.path.exists(PRICE_CACHE_FILE):
         return None
     try:
@@ -76,7 +77,7 @@ def _load_prices() -> pd.Series | None:
             return None
 
         if isinstance(prices_eur, pd.Series):
-            fx = get_eur_to_sek(date.today())
+            fx = get_eur_to_sek(today)
             return prices_eur.map(lambda v: eur_mwh_to_sek_kwh(float(v), fx))
     except Exception as exc:
         log.warning("web: failed to load price cache: %s", exc)

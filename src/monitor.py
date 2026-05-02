@@ -221,14 +221,17 @@ def start_scheduler() -> BackgroundScheduler:
     scheduler.start()
     log.info("Scheduler started. Background monitoring active.")
 
-    plan_day(date.today(), force_summary=True)
+    now = datetime.now()
+    today = now.date()
 
-    if datetime.now().hour >= 14:
+    plan_day(today, force_summary=True)
+
+    if now.hour >= 14:
         log.info(
             "Started after 14:00 — planning tomorrow's prices now "
             "(daily cron already fired for today)."
         )
-        plan_day(date.today() + timedelta(days=1))
+        plan_day(today + timedelta(days=1))
 
     _log_next_notification()
     return scheduler

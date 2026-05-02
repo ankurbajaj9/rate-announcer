@@ -332,7 +332,7 @@ class TestMonitor(unittest.TestCase):
             start_scheduler()
 
         mock_scheduler.start.assert_called_once()
-        mock_plan_day.assert_called_once_with(date.today(), force_summary=True)
+        mock_plan_day.assert_called_once_with(date(2026, 4, 20), force_summary=True)
         mock_next_log.assert_called_once()
 
     @patch("src.monitor._log_next_notification")
@@ -348,8 +348,8 @@ class TestMonitor(unittest.TestCase):
 
         mock_scheduler.start.assert_called_once()
         self.assertEqual(mock_plan_day.call_count, 2)
-        self.assertEqual(mock_plan_day.call_args_list[0], call(date.today(), force_summary=True))
-        self.assertEqual(mock_plan_day.call_args_list[1], call(date.today() + timedelta(days=1)))
+        self.assertEqual(mock_plan_day.call_args_list[0], call(date(2026, 4, 20), force_summary=True))
+        self.assertEqual(mock_plan_day.call_args_list[1], call(date(2026, 4, 21)))
         mock_next_log.assert_called_once()
 
 if __name__ == "__main__":
