@@ -211,7 +211,25 @@ class TestLoadPrices(unittest.TestCase):
         tz = "Europe/Stockholm"
         idx = pd.date_range(yesterday_str, periods=4, freq="15min", tz=tz)
         stale_series = pd.Series([100.0] * 4, index=idx)
-        stale_cache = (yesterday_str, stale_series)  # yesterday's cache
+
+        # New dict format: keyed on yesterday's date, not today's
+        stale_cache = {yesterday_str: stale_series}
+
+        with patch("src.web.os.path.exists", return_value=True), \
+             patch("src.web.pd.read_pickle", return_value=stale_cache):
+            result = _load_prices()
+        self.assertIsNone(result)
+
+    def test_returns_none_when_cache_date_is_stale_legacy_format(self):
+        """Backward compat: old tuple format with a stale date still returns None."""
+        from datetime import date, timedelta
+        from src.web import _load_prices
+
+        yesterday_str = (date.today() - timedelta(days=1)).isoformat()
+        tz = "Europe/Stockholm"
+        idx = pd.date_range(yesterday_str, periods=4, freq="15min", tz=tz)
+        stale_series = pd.Series([100.0] * 4, index=idx)
+        stale_cache = (yesterday_str, stale_series)  # legacy tuple format
 
         with patch("src.web.os.path.exists", return_value=True), \
              patch("src.web.pd.read_pickle", return_value=stale_cache):
@@ -226,8 +244,29 @@ class TestLoadPrices(unittest.TestCase):
         tz = "Europe/Stockholm"
         idx = pd.date_range(today_str, periods=4, freq="15min", tz=tz)
         eur_series = pd.Series([100.0] * 4, index=idx)  # 100 EUR/MWh
-        cache = (today_str, eur_series)
+        # New dict format: cache stores both today and (optionally) tomorrow
+        cache = {today_str: eur_series}
         fx_rate = 11.0  # 100 * 11 / 1000 = 1.1 SEK/kWh
+
+        with patch("src.web.os.path.exists", return_value=True), \
+             patch("src.web.pd.read_pickle", return_value=cache), \
+             patch("src.web.get_eur_to_sek", return_value=fx_rate):
+            result = _load_prices()
+
+        self.assertIsNotNone(result)
+        self.assertAlmostEqual(float(result.iloc[0]), 1.1)
+
+    def test_converts_eur_mwh_to_sek_kwh_legacy_format(self):
+        """Backward compat: old tuple format is still readable."""
+        from datetime import date
+        from src.web import _load_prices
+
+        today_str = date.today().isoformat()
+        tz = "Europe/Stockholm"
+        idx = pd.date_range(today_str, periods=4, freq="15min", tz=tz)
+        eur_series = pd.Series([100.0] * 4, index=idx)
+        cache = (today_str, eur_series)  # legacy tuple format
+        fx_rate = 11.0
 
         with patch("src.web.os.path.exists", return_value=True), \
              patch("src.web.pd.read_pickle", return_value=cache), \

@@ -46,13 +46,25 @@ def _load_prices() -> pd.Series | None:
     validates that the cached date matches today (to avoid showing stale data
     after midnight) and converts the series to SEK/kWh using the live FX rate
     before returning it.
+
+    Supports both the current dict-keyed cache format and the legacy
+    ``(date_str, prices)`` tuple format for backward compatibility.
     """
-    today_str = date.today().isoformat()
+    today = date.today()
+    today_str = today.isoformat()
     if not os.path.exists(PRICE_CACHE_FILE):
         return None
     try:
         cached = pd.read_pickle(PRICE_CACHE_FILE)
-        if isinstance(cached, tuple) and len(cached) == 2:
+        prices_eur = None
+
+        if isinstance(cached, dict):
+            prices_eur = cached.get(today_str)
+            if prices_eur is None:
+                log.warning("web: no price data for today (%s) in cache.", today_str)
+                return None
+        elif isinstance(cached, tuple) and len(cached) == 2:
+            # Backward-compat: old format stored a single (date_str, prices) tuple
             cached_date, prices_eur = cached
             if cached_date != today_str:
                 log.warning(
@@ -61,9 +73,12 @@ def _load_prices() -> pd.Series | None:
                     today_str,
                 )
                 return None
-            if isinstance(prices_eur, pd.Series):
-                fx = get_eur_to_sek(date.today())
-                return prices_eur.map(lambda v: eur_mwh_to_sek_kwh(float(v), fx))
+        else:
+            return None
+
+        if isinstance(prices_eur, pd.Series):
+            fx = get_eur_to_sek(today)
+            return prices_eur.map(lambda v: eur_mwh_to_sek_kwh(float(v), fx))
     except Exception as exc:
         log.warning("web: failed to load price cache: %s", exc)
     return None

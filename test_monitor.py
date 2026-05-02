@@ -1,6 +1,6 @@
 import os
 import unittest
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import patch, MagicMock, mock_open, call
 from datetime import datetime, date, timedelta
 import pandas as pd
 
@@ -323,14 +323,33 @@ class TestMonitor(unittest.TestCase):
     @patch("src.monitor._log_next_notification")
     @patch("src.monitor.plan_day")
     @patch("src.monitor.scheduler")
-    def test_start_scheduler_reports_next_notification(self, mock_scheduler, mock_plan_day, mock_next_log):
-        """Startup reports next notification timing."""
+    def test_start_scheduler_before_14_plans_today_only(self, mock_scheduler, mock_plan_day, mock_next_log):
+        """Before 14:00, startup plans today only."""
         from src.monitor import start_scheduler
 
-        start_scheduler()
+        with patch("src.monitor.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 4, 20, 10, 0, 0)
+            start_scheduler()
 
         mock_scheduler.start.assert_called_once()
-        mock_plan_day.assert_called_once_with(date.today(), force_summary=True)
+        mock_plan_day.assert_called_once_with(date(2026, 4, 20), force_summary=True)
+        mock_next_log.assert_called_once()
+
+    @patch("src.monitor._log_next_notification")
+    @patch("src.monitor.plan_day")
+    @patch("src.monitor.scheduler")
+    def test_start_scheduler_after_14_plans_today_and_tomorrow(self, mock_scheduler, mock_plan_day, mock_next_log):
+        """After 14:00, startup also plans tomorrow (daily cron already fired)."""
+        from src.monitor import start_scheduler
+
+        with patch("src.monitor.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 4, 20, 15, 0, 0)
+            start_scheduler()
+
+        mock_scheduler.start.assert_called_once()
+        self.assertEqual(mock_plan_day.call_count, 2)
+        self.assertEqual(mock_plan_day.call_args_list[0], call(date(2026, 4, 20), force_summary=True))
+        self.assertEqual(mock_plan_day.call_args_list[1], call(date(2026, 4, 21)))
         mock_next_log.assert_called_once()
 
 if __name__ == "__main__":

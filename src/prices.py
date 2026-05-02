@@ -29,6 +29,29 @@ log = logging.getLogger(__name__)
 _FX_FALLBACK_RATE = 11.0
 
 
+def _load_price_cache() -> dict:
+    """Load the price cache file and return a dict keyed by ISO date string.
+
+    Supports both the current dict format and the legacy ``(date_str, prices)``
+    tuple format so that an existing cache file is not discarded after an upgrade.
+    Returns an empty dict if the file is absent or unreadable.
+    """
+    if not os.path.exists(PRICE_CACHE_FILE):
+        return {}
+    try:
+        cached_data = pd.read_pickle(PRICE_CACHE_FILE)
+        if isinstance(cached_data, dict):
+            return cached_data
+        # Backward-compat: old format stored a single (date_str, prices) tuple
+        if isinstance(cached_data, tuple) and len(cached_data) == 2:
+            cached_date, prices = cached_data
+            if isinstance(cached_date, str):
+                return {cached_date: prices}
+    except Exception as e:
+        log.warning("Failed to load price cache: %s", e)
+    return {}
+
+
 def fetch_quarter_prices(target_date: date) -> tuple[Any, bool]:
     """
     Fetch a target date's 15-minute price granularity from ENTSO-E.
@@ -39,15 +62,9 @@ def fetch_quarter_prices(target_date: date) -> tuple[Any, bool]:
     today, tomorrow = date.today(), date.today() + timedelta(days=1)
 
     if target_date in (today, tomorrow):
-        if os.path.exists(PRICE_CACHE_FILE):
-            try:
-                cached_data = pd.read_pickle(PRICE_CACHE_FILE)
-                if isinstance(cached_data, tuple) and len(cached_data) == 2:
-                    cached_date, prices = cached_data
-                    if cached_date == target_date_str:
-                        return prices, False
-            except Exception as e:
-                log.warning("Failed to load price cache: %s", e)
+        cache = _load_price_cache()
+        if target_date_str in cache:
+            return cache[target_date_str], False
 
     client = EntsoePandasClient(api_key=ENTSOE_API_TOKEN)
     tz = "Europe/Stockholm"
@@ -63,7 +80,15 @@ def fetch_quarter_prices(target_date: date) -> tuple[Any, bool]:
 
     if target_date in (today, tomorrow):
         try:
-            pd.to_pickle((target_date_str, prices), PRICE_CACHE_FILE)
+            # Merge with any existing cached entries so we never evict the
+            # sibling day's data (e.g. caching tomorrow must not overwrite today).
+            # Prune stale keys — only today and tomorrow are ever needed.
+            cache = _load_price_cache()
+            cache[target_date_str] = prices
+            stale_keys = [k for k in cache if k not in (today.isoformat(), tomorrow.isoformat())]
+            for k in stale_keys:
+                del cache[k]
+            pd.to_pickle(cache, PRICE_CACHE_FILE)
         except Exception as e:
             log.warning("Failed to save price cache: %s", e)
 

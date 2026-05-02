@@ -213,11 +213,25 @@ def start_scheduler() -> BackgroundScheduler:
     1. Register a daily cron job to plan tomorrow at 14:00.
     2. Start the background scheduler.
     3. Plan today immediately and announce the daily summary regardless of cache.
+    4. If started after 14:00, also plan tomorrow — the cron has already fired
+       for today and won't run again until tomorrow, so tomorrow's prices would
+       otherwise be missing until then (e.g. after a post-14:00 reboot).
     """
     scheduler.add_job(daily_planner_job, "cron", hour=14, minute=0)
     scheduler.start()
     log.info("Scheduler started. Background monitoring active.")
 
-    plan_day(date.today(), force_summary=True)
+    now = datetime.now()
+    today = now.date()
+
+    plan_day(today, force_summary=True)
+
+    if now.hour >= 14:
+        log.info(
+            "Started after 14:00 — planning tomorrow's prices now "
+            "(daily cron already fired for today)."
+        )
+        plan_day(today + timedelta(days=1))
+
     _log_next_notification()
     return scheduler

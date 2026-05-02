@@ -192,6 +192,12 @@
   </div>
 </div>
 
+<!-- Price chart -->
+<div class="section-title" style="margin-top:1.5rem">Price Chart (öre/kWh)</div>
+<div class="card" style="margin-bottom:1.5rem;padding:1.25rem 1rem">
+  <canvas id="priceChart" height="110"></canvas>
+</div>
+
 <!-- Price table -->
 <div class="section-title">Today's 15-Min Prices</div>
 <div class="table-wrap">
@@ -230,7 +236,64 @@
   Generated {{ generated_at }}
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"
+        integrity="sha384-OLBgp1GsljhM2TJ+sbHjaiH9txEUvgdDTAzHv2P24donTt6/529l+9Ua0vFImLlb"
+        crossorigin="anonymous"
+        referrerpolicy="no-referrer"></script>
 <script>
+  // Build the price chart from server-rendered data
+  (function () {
+    const priceData = {{ prices | tojson }};
+    if (!priceData || priceData.length === 0) return;
+
+    const labels     = priceData.map(r => r.time);
+    const values     = priceData.map(r => r.price);
+    const bgColors   = priceData.map(r => r.is_current ? '#38bdf8' : r.bar_color + 'cc');
+    const borderClrs = priceData.map(r => r.is_current ? '#7dd3fc' : r.bar_color);
+
+    new Chart(document.getElementById('priceChart'), {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'öre/kWh',
+          data: values,
+          backgroundColor: bgColors,
+          borderColor: borderClrs,
+          borderWidth: 1,
+          borderRadius: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        animation: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => `${ctx.parsed.y} öre/kWh`
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: {
+              color: '#64748b',
+              maxRotation: 45,
+              autoSkip: true,
+              maxTicksLimit: 24,
+            },
+            grid: { color: '#1e293b' }
+          },
+          y: {
+            ticks: { color: '#64748b' },
+            grid: { color: '#334155' }
+          }
+        }
+      }
+    });
+  })();
+
   // Auto-refresh the page every 60 seconds
   setTimeout(() => location.reload(), 60000);
 
