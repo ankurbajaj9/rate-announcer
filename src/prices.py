@@ -82,8 +82,12 @@ def fetch_quarter_prices(target_date: date) -> tuple[Any, bool]:
         try:
             # Merge with any existing cached entries so we never evict the
             # sibling day's data (e.g. caching tomorrow must not overwrite today).
+            # Prune stale keys — only today and tomorrow are ever needed.
             cache = _load_price_cache()
             cache[target_date_str] = prices
+            stale_keys = [k for k in cache if k not in (today.isoformat(), tomorrow.isoformat())]
+            for k in stale_keys:
+                del cache[k]
             pd.to_pickle(cache, PRICE_CACHE_FILE)
         except Exception as e:
             log.warning("Failed to save price cache: %s", e)
