@@ -199,11 +199,12 @@
 </div>
 
 <!-- Price table -->
-<div class="section-title">Today's 15-Min Prices</div>
+<div class="section-title">{% if has_tomorrow %}Today's and Tomorrow's 15-Min Prices{% else %}Today's 15-Min Prices{% endif %}</div>
 <div class="table-wrap">
   <table>
     <thead>
       <tr>
+        <th>Date</th>
         <th>Time</th>
         <th>Price (öre/kWh)</th>
         <th>Relative</th>
@@ -213,7 +214,8 @@
     <tbody>
       {% for row in prices %}
       <tr class="{{ 'current-row' if row.is_current else '' }}">
-        <td class="time">{{ row.time }}</td>
+        <td class="time">{{ row.date }}</td>
+        <td>{{ row.display_time }}</td>
         <td>{{ row.price }}</td>
         <td>
           <span style="color:#94a3b8;font-size:0.8rem">{{ row.pct }}%</span>
@@ -246,7 +248,7 @@
     const priceData = {{ prices | tojson }};
     if (!priceData || priceData.length === 0) return;
 
-    const labels     = priceData.map(r => r.time);
+    const labels     = priceData.map(r => r.display_time || r.time);
     const values     = priceData.map(r => r.price);
     const bgColors   = priceData.map(r => r.is_current ? '#38bdf8' : r.bar_color + 'cc');
     const borderClrs = priceData.map(r => r.is_current ? '#7dd3fc' : r.bar_color);

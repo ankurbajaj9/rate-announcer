@@ -276,6 +276,31 @@ class TestLoadPrices(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertAlmostEqual(float(result.iloc[0]), 1.1)
 
+    def test_loads_today_and_tomorrow_from_dict_cache(self):
+        """Dict cache should merge both available days so the UI can render them."""
+        from datetime import date, timedelta
+        from src.web import _load_prices
+
+        today = date.today()
+        tomorrow = today + timedelta(days=1)
+        tz = "Europe/Stockholm"
+        today_idx = pd.date_range(today.isoformat(), periods=2, freq="15min", tz=tz)
+        tomorrow_idx = pd.date_range(tomorrow.isoformat(), periods=2, freq="15min", tz=tz)
+        cache = {
+            today.isoformat(): pd.Series([100.0, 110.0], index=today_idx),
+            tomorrow.isoformat(): pd.Series([120.0, 130.0], index=tomorrow_idx),
+        }
+
+        with patch("src.web.os.path.exists", return_value=True), \
+             patch("src.web.pd.read_pickle", return_value=cache), \
+             patch("src.web.get_eur_to_sek", return_value=11.0):
+            result = _load_prices()
+
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result), 4)
+        self.assertEqual(result.index[0].date(), today)
+        self.assertEqual(result.index[-1].date(), tomorrow)
+
 
 if __name__ == "__main__":
     unittest.main()

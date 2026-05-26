@@ -10,7 +10,7 @@ Serves a dashboard at http://<host>:<WEB_PORT>/ that shows:
 import logging
 import os
 import threading
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 from flask import Flask, jsonify, render_template
@@ -40,27 +40,32 @@ def set_scheduler(scheduler) -> None:
 # ── Data helpers ─────────────────────────────────────────────────────────────
 
 def _load_prices() -> pd.Series | None:
-    """Load today's price series (SEK/kWh) from cache, or return None.
+    """Load today's and tomorrow's cached price series (SEK/kWh), or return None.
 
     The cache stores raw EUR/MWh prices fetched from ENTSO-E.  This function
     validates that the cached date matches today (to avoid showing stale data
     after midnight) and converts the series to SEK/kWh using the live FX rate
-    before returning it.
+    before returning it. If both today and tomorrow are cached, the series are
+    concatenated and sorted so the UI can render the full available window.
 
     Supports both the current dict-keyed cache format and the legacy
     ``(date_str, prices)`` tuple format for backward compatibility.
     """
     today = date.today()
     today_str = today.isoformat()
+    tomorrow_str = (today + timedelta(days=1)).isoformat()
     if not os.path.exists(PRICE_CACHE_FILE):
         return None
     try:
         cached = pd.read_pickle(PRICE_CACHE_FILE)
-        prices_eur = None
+        prices_by_day: dict[str, pd.Series] = {}
 
         if isinstance(cached, dict):
-            prices_eur = cached.get(today_str)
-            if prices_eur is None:
+            for day_str in (today_str, tomorrow_str):
+                prices_eur = cached.get(day_str)
+                if isinstance(prices_eur, pd.Series):
+                    prices_by_day[day_str] = prices_eur
+            if not prices_by_day:
                 log.warning("web: no price data for today (%s) in cache.", today_str)
                 return None
         elif isinstance(cached, tuple) and len(cached) == 2:
@@ -73,12 +78,18 @@ def _load_prices() -> pd.Series | None:
                     today_str,
                 )
                 return None
+            if isinstance(prices_eur, pd.Series):
+                prices_by_day[today_str] = prices_eur
         else:
             return None
 
-        if isinstance(prices_eur, pd.Series):
+        if prices_by_day:
             fx = get_eur_to_sek(today)
-            return prices_eur.map(lambda v: eur_mwh_to_sek_kwh(float(v), fx))
+            converted = [
+                series.map(lambda v: eur_mwh_to_sek_kwh(float(v), fx))
+                for series in prices_by_day.values()
+            ]
+            return pd.concat(converted).sort_index()
     except Exception as exc:
         log.warning("web: failed to load price cache: %s", exc)
     return None
@@ -123,6 +134,8 @@ def _build_price_rows(prices: pd.Series) -> list[dict]:
         return []
 
     now = datetime.now(tz=prices.index[0].tzinfo)
+    today = date.today()
+    tomorrow = today + timedelta(days=1)
     daily_max = float(prices.max())
     daily_min = float(prices.min())
     price_range = daily_max - daily_min if daily_max != daily_min else 1.0
@@ -150,10 +163,19 @@ def _build_price_rows(prices: pd.Series) -> list[dict]:
         else:
             now_cmp = datetime.now()
         is_current = ts_dt <= now_cmp < ts_dt + pd.Timedelta(minutes=15)
+        if ts_dt.date() == today:
+            day_label = "Today"
+        elif ts_dt.date() == tomorrow:
+            day_label = "Tomorrow"
+        else:
+            day_label = ts_dt.strftime("%a")
 
         rows.append(
             {
+                "date": ts_dt.strftime("%a %d %b"),
+                "day_label": day_label,
                 "time": ts_dt.strftime("%H:%M"),
+                "display_time": f"{day_label} {ts_dt.strftime('%H:%M')}",
                 "price": price_ore,
                 "pct": pct,
                 "level": level,
@@ -192,6 +214,7 @@ def dashboard():
         "index.html",
         price_area=PRICE_AREA,
         prices=price_rows,
+        has_tomorrow=any(r["day_label"] == "Tomorrow" for r in price_rows),
         avg_price=avg_price,
         low_price=low_price,
         high_price=high_price,
@@ -232,7 +255,13 @@ def api_status():
             "next_announcement": next_alert,
             "next_announcement_in": next_alert_in,
             "prices": [
-                {"time": r["time"], "price_ore": r["price"], "level": r["level"]}
+                {
+                    "date": r["date"],
+                    "time": r["time"],
+                    "display_time": r["display_time"],
+                    "price_ore": r["price"],
+                    "level": r["level"],
+                }
                 for r in price_rows
             ],
         }

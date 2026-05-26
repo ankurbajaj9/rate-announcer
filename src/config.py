@@ -38,6 +38,9 @@ FX_CACHE_FILE = os.getenv("FX_CACHE_FILE", "/tmp/rate_announcer_fx.json")
 
 # Scheduling
 SUMMARY_ANNOUNCE_DELAY_SEC = int(os.getenv("SUMMARY_ANNOUNCE_DELAY_SEC", "2"))
+# How many minutes before a high-price timeslot to play the alert.
+# Set via environment variable `ALERT_OFFSET_MINUTES`. Default: 1 minute.
+ALERT_OFFSET_MINUTES = int(os.getenv("ALERT_OFFSET_MINUTES", "1"))
 
 # Web UI
 WEB_PORT = int(os.getenv("WEB_PORT", "8080"))

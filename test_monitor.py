@@ -19,10 +19,8 @@ class TestMonitor(unittest.TestCase):
             (30.2, "03:00"),
         )
         expected = (
-            "I have fetched the electricity rates for today. "
-            "The average price is 75.0 öre per kilowatt hour. "
-            "The maximum price will be 120.5 öre at 14:00, "
-            "and the minimum will be 30.2 öre at 03:00."
+            "Summary for today: avg 75.0 öre; "
+            "max 120.5 öre at 14:00; min 30.2 öre at 03:00."
         )
         self.assertEqual(msg, expected)
 
@@ -278,6 +276,49 @@ class TestMonitor(unittest.TestCase):
         plan_day(date.today(), force_summary=False)
         # No summary job (is_new_fetch=False), no alert jobs (all times in the past)
         mock_scheduler.add_job.assert_not_called()
+
+    @patch("src.monitor.ALERT_OFFSET_MINUTES", 1)
+    @patch("src.monitor.scheduler")
+    @patch("src.monitor.is_quiet_hour", return_value=False)
+    @patch("src.monitor.get_eur_to_sek", return_value=11.0)
+    @patch("src.monitor.fetch_quarter_prices")
+    def test_alerts_scheduled_one_minute_before_slot(
+        self, mock_fetch, mock_fx, mock_quiet, mock_scheduler
+    ):
+        """High-price alerts should be scheduled one minute before the slot."""
+        from src.monitor import plan_day
+
+        tz = "Europe/Stockholm"
+        # fixed now is 2026-04-20 10:00
+        fixed_now = datetime(2026, 4, 20, 10, 0, 0)
+
+        # Build future times where a high-price entry exists at the second slot
+        times = pd.date_range("2026-04-20 10:15", periods=3, freq="15min", tz=tz)
+        # Values: middle slot is the daily max and thus qualifies as entering high
+        mock_prices = pd.Series([50.0, 90.0, 60.0], index=times)
+        mock_fetch.return_value = (mock_prices, True)
+
+        # Ensure datetime.now(tz) returns a tz-aware fixed time matching scheduled comparisons
+        def now_side_effect(tzarg=None):
+            if tzarg:
+                return datetime(2026, 4, 20, 10, 0, 0, tzinfo=tzarg)
+            return fixed_now
+
+        with patch("src.monitor.datetime") as mock_datetime:
+            mock_datetime.now.side_effect = now_side_effect
+
+            plan_day(date(2026, 4, 20), force_summary=False)
+
+        # Find a scheduled add_job call with run_date == (times[1] - 1 minute)
+        expected_run = (times[1].to_pydatetime() - timedelta(minutes=1))
+        found = False
+        for call in mock_scheduler.add_job.call_args_list:
+            rd = call.kwargs.get("run_date")
+            if rd == expected_run:
+                found = True
+                break
+
+        self.assertTrue(found, f"No add_job call scheduled at {expected_run}")
 
     @patch("src.monitor.log")
     @patch("src.monitor.scheduler")

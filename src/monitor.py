@@ -15,6 +15,7 @@ from src.config import (
     QUIET_HOURS_END,
     QUIET_HOURS_START,
     SUMMARY_ANNOUNCE_DELAY_SEC,
+    ALERT_OFFSET_MINUTES,
     THRESHOLD_PERCENT,
 )
 from src.notify import notify_google_home
@@ -59,27 +60,21 @@ def _build_summary_message(
     """
     high_price, high_time = high
     low_price, low_time = low
+    # Shortened summary: compact, easy for TTS to speak quickly
     return (
-        f"I have fetched the electricity rates for {day_word}. "
-        f"The average price is {avg_ore} öre per kilowatt hour. "
-        f"The maximum price will be {high_price} öre at {high_time}, "
-        f"and the minimum will be {low_price} öre at {low_time}."
+        f"Summary for {day_word}: avg {avg_ore} öre; "
+        f"max {high_price} öre at {high_time}; min {low_price} öre at {low_time}."
     )
 
 
 def _build_alert_message(price_ore: float, pct: float, drop_time: datetime | None) -> str:
     """Return the high-price alert announcement text."""
-    msg = (
-        f"Electricity price alert. The current rate is {price_ore} öre, "
-        f"which is {pct:.0f} percent of today's maximum price. "
-    )
+    # Compact alert message: concise for faster playback
+    msg = f"Price alert: {price_ore} öre ({pct:.0f}% of max)."
     if drop_time:
-        msg += (
-            f"The rate will drop below the threshold at {drop_time.strftime('%H:%M')}. "
-            "Consider delaying energy usage until then."
-        )
+        msg += f" Drops at {drop_time.strftime('%H:%M')}."
     else:
-        msg += "The rate will remain high for the rest of the day. Consider reducing energy usage."
+        msg += " No drop expected today."
     return msg
 
 
@@ -175,24 +170,29 @@ def plan_day(target_date: date, force_summary: bool = False) -> None:
 
             if not is_entering_high:
                 continue
-            if is_quiet_hour(interval_time):
+            # Schedule ALERT_OFFSET_MINUTES before the high-price timeslot
+            scheduled_time = interval_time - timedelta(minutes=ALERT_OFFSET_MINUTES)
+
+            # Skip if scheduled time falls in quiet hours
+            if is_quiet_hour(scheduled_time):
                 continue
-            if interval_time <= datetime.now(interval_time.tzinfo):
+
+            # Skip past times (compare scheduled_time to now in same tz)
+            if scheduled_time <= datetime.now(scheduled_time.tzinfo):
                 continue
 
             drop_time = _find_drop_time(prices_sek, threshold, i + 1)
             pct = (current_sek / daily_max_sek) * 100
             price_ore = round(current_sek * 100, 1)
             msg = _build_alert_message(price_ore, pct, drop_time)
-
             log.info(
-                "Scheduling notification for %.4f SEK (%.0f%%) at %s. Drop time: %s",
-                current_sek, pct, interval_time, drop_time,
+                "Scheduling notification for %.4f SEK (%.0f%%) at %s (play at %s). Drop time: %s",
+                current_sek, pct, interval_time, scheduled_time, drop_time,
             )
             scheduler.add_job(
                 notify_google_home,
                 "date",
-                run_date=interval_time,
+                run_date=scheduled_time,
                 args=[msg],
             )
 
