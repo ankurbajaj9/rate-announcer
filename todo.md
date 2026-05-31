@@ -15,6 +15,7 @@
 - [x] Finalize project cleanup — removed legacy discovery scripts (`test_discovery*.py`)
 - [x] Refactor `_build_summary_message` to accept `high: tuple[float, str]` and `low: tuple[float, str]` instead of four separate parameters
 - [x] Show both today's and tomorrow's available rates in the web UI table and chart
+- [x] Announce missed high-price alerts immediately when the service restarts during an active peak window
 
 ## To-do
 - [ ] Add more comprehensive logging options

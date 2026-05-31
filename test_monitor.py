@@ -320,6 +320,43 @@ class TestMonitor(unittest.TestCase):
 
         self.assertTrue(found, f"No add_job call scheduled at {expected_run}")
 
+    @patch("src.monitor.ALERT_OFFSET_MINUTES", 1)
+    @patch("src.monitor.scheduler")
+    @patch("src.monitor.is_quiet_hour", return_value=False)
+    @patch("src.monitor.get_eur_to_sek", return_value=11.0)
+    @patch("src.monitor.fetch_quarter_prices")
+    def test_alerts_fire_immediately_when_restart_mid_peak(
+        self, mock_fetch, mock_fx, mock_quiet, mock_scheduler
+    ):
+        """A restart during an active peak should still announce it immediately."""
+        from src.monitor import plan_day
+
+        tz = "Europe/Stockholm"
+        fixed_now = pd.Timestamp("2026-04-20 10:50", tz=tz).to_pydatetime()
+        times = pd.date_range("2026-04-20 10:15", periods=4, freq="15min", tz=tz)
+        mock_prices = pd.Series([50.0, 90.0, 90.0, 60.0], index=times)
+        mock_fetch.return_value = (mock_prices, False)
+
+        def now_side_effect(tzarg=None):
+            if tzarg:
+                return fixed_now.astimezone(tzarg)
+            return fixed_now
+
+        with patch("src.monitor.datetime") as mock_datetime:
+            mock_datetime.now.side_effect = now_side_effect
+            plan_day(date(2026, 4, 20), force_summary=False)
+
+        found = False
+        for call_args in mock_scheduler.add_job.call_args_list:
+            if (
+                call_args.args[:2] == (notify_google_home, "date")
+                and call_args.kwargs.get("run_date") == fixed_now
+            ):
+                found = True
+                break
+
+        self.assertTrue(found, "No immediate alert was scheduled during the active peak.")
+
     @patch("src.monitor.log")
     @patch("src.monitor.scheduler")
     def test_log_next_notification_logs_next_run(self, mock_scheduler, mock_log):

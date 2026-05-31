@@ -135,6 +135,11 @@ def plan_day(target_date: date, force_summary: bool = False) -> None:
         high = (round(daily_max_sek * 100, 1), high_time)
         low = (round(daily_min_sek * 100, 1), low_time)
         threshold = daily_max_sek * THRESHOLD_PERCENT
+        slot_delta = (
+            prices_sek.index[1].to_pydatetime() - prices_sek.index[0].to_pydatetime()
+            if len(prices_sek) > 1
+            else timedelta(minutes=15)
+        )
 
         log.info(
             "Planning for %s | Max SEK: %.4f | Threshold (%.0f%%): %.4f",
@@ -172,27 +177,33 @@ def plan_day(target_date: date, force_summary: bool = False) -> None:
                 continue
             # Schedule ALERT_OFFSET_MINUTES before the high-price timeslot
             scheduled_time = interval_time - timedelta(minutes=ALERT_OFFSET_MINUTES)
-
-            # Skip if scheduled time falls in quiet hours
-            if is_quiet_hour(scheduled_time):
-                continue
-
-            # Skip past times (compare scheduled_time to now in same tz)
-            if scheduled_time <= datetime.now(scheduled_time.tzinfo):
-                continue
-
+            current_time = datetime.now(scheduled_time.tzinfo)
             drop_time = _find_drop_time(prices_sek, threshold, i + 1)
+            peak_end = drop_time or (prices_sek.index[-1].to_pydatetime() + slot_delta)
+
+            if current_time >= peak_end:
+                continue
+
+            # If the service restarts after the alert time but the peak period
+            # is still active, announce immediately instead of dropping it.
+            run_date = scheduled_time
+            if scheduled_time <= current_time:
+                run_date = current_time
+
+            # Skip future alerts if their playback time falls in quiet hours.
+            if run_date == scheduled_time and is_quiet_hour(scheduled_time):
+                continue
             pct = (current_sek / daily_max_sek) * 100
             price_ore = round(current_sek * 100, 1)
             msg = _build_alert_message(price_ore, pct, drop_time)
             log.info(
                 "Scheduling notification for %.4f SEK (%.0f%%) at %s (play at %s). Drop time: %s",
-                current_sek, pct, interval_time, scheduled_time, drop_time,
+                current_sek, pct, interval_time, run_date, drop_time,
             )
             scheduler.add_job(
                 notify_google_home,
                 "date",
-                run_date=scheduled_time,
+                run_date=run_date,
                 args=[msg],
             )
 
