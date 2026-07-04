@@ -33,6 +33,32 @@ Run the monitor manually:
 python main.py
 ```
 
+## Docker on Raspberry Pi
+
+The app can run as a container on Raspberry Pi with one image for both the scheduler and the web UI.
+
+1.  **Build the image**:
+    ```bash
+    docker build -t rate-announcer .
+    ```
+
+2.  **Run it with host networking** so Chromecast discovery and the local TTS HTTP server stay reachable on your LAN:
+    ```bash
+    docker run -d \
+      --name rate-announcer \
+      --network host \
+      --restart unless-stopped \
+      --env-file .env \
+      rate-announcer
+    ```
+
+3.  **Or use Docker Compose**:
+    ```bash
+    docker compose up -d --build
+    ```
+
+The dashboard will be available on the configured `WEB_PORT`, and the audio server uses `SERVE_PORT` from `src/config.py`.
+
 ## Automation (Systemd)
 
 Refer to [SETUP.md](SETUP.md) for detailed instructions on setting up a systemd service to run the monitor as a background daemon.

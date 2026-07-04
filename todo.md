@@ -16,10 +16,10 @@
 - [x] Refactor `_build_summary_message` to accept `high: tuple[float, str]` and `low: tuple[float, str]` instead of four separate parameters
 - [x] Show both today's and tomorrow's available rates in the web UI table and chart
 - [x] Announce missed high-price alerts immediately when the service restarts during an active peak window
+- [x] Containerize the application with Docker and Docker Compose
 
 ## To-do
 - [ ] Add more comprehensive logging options
-- [ ] Containerize the application (Dockerfile)
 - [ ] Implement multi-speaker support
 - [ ] Add support for different notification languages (currently supports 'sv' via config)
 - [ ] Refactor scheduling: Create a daily planner that fetches tomorrow's prices once a day (e.g., at 13:00), pre-calculates the exact timestamps when boundaries are crossed, and schedules exact one-off runs (e.g., using `at` or an async timer) instead of a constant 15-minute polling loop.

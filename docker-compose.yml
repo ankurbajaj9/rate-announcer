@@ -1,0 +1,10 @@
+services:
+  rate-announcer:
+    build:
+      context: .
+    image: rate-announcer:latest
+    network_mode: host
+    env_file:
+      - path: .env
+        required: false
+    restart: unless-stopped
