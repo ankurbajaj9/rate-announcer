@@ -54,33 +54,25 @@ def _load_prices() -> pd.Series | None:
     today = date.today()
     today_str = today.isoformat()
     tomorrow_str = (today + timedelta(days=1)).isoformat()
-    if not os.path.exists(PRICE_CACHE_FILE):
-        return None
     try:
-        cached = pd.read_pickle(PRICE_CACHE_FILE)
         prices_by_day: dict[str, pd.Series] = {}
 
-        if isinstance(cached, dict):
-            for day_str in (today_str, tomorrow_str):
-                prices_eur = cached.get(day_str)
-                if isinstance(prices_eur, pd.Series):
-                    prices_by_day[day_str] = prices_eur
-            if not prices_by_day:
-                log.warning("web: no price data for today (%s) in cache.", today_str)
-                return None
-        elif isinstance(cached, tuple) and len(cached) == 2:
-            # Backward-compat: old format stored a single (date_str, prices) tuple
-            cached_date, prices_eur = cached
-            if cached_date != today_str:
-                log.warning(
-                    "web: price cache is for %s, not today (%s) — skipping.",
-                    cached_date,
-                    today_str,
-                )
-                return None
-            if isinstance(prices_eur, pd.Series):
-                prices_by_day[today_str] = prices_eur
-        else:
+        if os.path.exists(PRICE_CACHE_FILE):
+            cached = pd.read_pickle(PRICE_CACHE_FILE)
+
+            if isinstance(cached, dict):
+                for day_str in (today_str, tomorrow_str):
+                    prices_eur = cached.get(day_str)
+                    if isinstance(prices_eur, pd.Series):
+                        prices_by_day[day_str] = prices_eur
+            elif isinstance(cached, tuple) and len(cached) == 2:
+                # Backward-compat: old format stored a single (date_str, prices) tuple
+                cached_date, prices_eur = cached
+                if cached_date == today_str and isinstance(prices_eur, pd.Series):
+                    prices_by_day[today_str] = prices_eur
+
+        if not prices_by_day:
+            log.warning("web: no price data available for today (%s).", today_str)
             return None
 
         if prices_by_day:

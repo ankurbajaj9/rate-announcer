@@ -17,6 +17,7 @@
 - [x] Show both today's and tomorrow's available rates in the web UI table and chart
 - [x] Announce missed high-price alerts immediately when the service restarts during an active peak window
 - [x] Containerize the application with Docker and Docker Compose
+- [x] Keep the web dashboard read-only when today's prices are missing from cache
 
 ## To-do
 - [ ] Add more comprehensive logging options
