@@ -18,7 +18,7 @@ from src.config import (
     ALERT_OFFSET_MINUTES,
     THRESHOLD_PERCENT,
 )
-from src.notify import notify_google_home
+from src.notify import notify_google_home, notify_play_sound
 from src.prices import eur_mwh_to_sek_kwh, fetch_quarter_prices, get_eur_to_sek
 
 # Configure logging once for the whole application
@@ -206,6 +206,19 @@ def plan_day(target_date: date, force_summary: bool = False) -> None:
                 run_date=run_date,
                 args=[msg],
             )
+            # Schedule minor notification when peak period ends
+            try:
+                end_run_date = peak_end
+                if end_run_date and end_run_date > current_time and not is_quiet_hour(end_run_date):
+                    # schedule short non-verbal sound at peak end
+                    scheduler.add_job(
+                        notify_play_sound,
+                        "date",
+                        run_date=end_run_date,
+                        args=[],
+                    )
+            except Exception:
+                log.exception("Failed scheduling end-of-peak sound for %s.", interval_time)
 
     except Exception:
         log.exception("Workflow error while planning day for %s.", target_date)

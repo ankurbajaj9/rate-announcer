@@ -7,3 +7,5 @@ python-dotenv>=1.0.0
 apscheduler>=3.10
 zeroconf>=0.140.0
 flask>=3.0
+soupsieve>=2.8.4
+urllib3>=2.7.0

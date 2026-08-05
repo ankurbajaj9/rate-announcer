@@ -19,6 +19,9 @@ import time
 import pychromecast
 import zeroconf
 from gtts import gTTS
+import wave
+import math
+import struct
 
 from src.config import (
     GOOGLE_HOME_HOST,
@@ -228,6 +231,141 @@ def notify_google_home(message: str) -> bool:
 
     except Exception as e:
         log.exception("Notification failed: %s", e)
+        return False
+    finally:
+        if server:
+            server.shutdown()
+            server.server_close()
+        if cast:
+            try:
+                cast.disconnect(timeout=5)
+            except Exception as exc:
+                log.warning("Failed to disconnect Chromecast cleanly: %s", exc)
+        if browser:
+            browser.stop_discovery()
+        if zconf:
+            zconf.close()
+        if audio_path and os.path.exists(audio_path):
+            os.unlink(audio_path)
+        if audio_dir and os.path.exists(audio_dir):
+            try:
+                os.rmdir(audio_dir)
+            except OSError as exc:
+                log.warning("Failed to remove temp audio directory %s: %s", audio_dir, exc)
+
+
+def notify_play_sound(duration_sec: float = 0.6, frequency_hz: int = 880) -> bool:
+    """
+    Generate short sine-wave WAV and play on configured Google Home.
+    Returns True on success, False on failure.
+    """
+    audio_path = None
+    audio_dir = None
+    server = None
+    browser = None
+    zconf = None
+    cast = None
+    try:
+        # generate temporary wav file
+        audio_dir = tempfile.mkdtemp()
+        tmp_fd, audio_path = tempfile.mkstemp(suffix=".wav", dir=audio_dir)
+        os.close(tmp_fd)
+
+        sample_rate = 44100
+        amplitude = 16000
+        n_samples = int(sample_rate * duration_sec)
+
+        with wave.open(audio_path, "w") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate)
+            for i in range(n_samples):
+                t = float(i) / sample_rate
+                sample = amplitude * math.sin(2 * math.pi * frequency_hz * t)
+                wf.writeframes(struct.pack('<h', int(sample)))
+
+        server, audio_url = _serve_file(audio_path, SERVE_PORT)
+        log.info("Serving sound: %s", audio_url)
+
+        found_host = None
+        found_port = None
+        found_uuid = None
+        found_model_name = None
+
+        if GOOGLE_HOME_HOST:
+            found_host = GOOGLE_HOME_HOST
+            found_port = GOOGLE_HOME_PORT
+        else:
+            discover_complete = threading.Event()
+            _devices_cell = [None]
+
+            def add_callback(uuid, service):
+                nonlocal found_host, found_port, found_uuid, found_model_name
+                devices = _devices_cell[0]
+                if devices is None:
+                    return
+                cast_info = devices.get(uuid)
+                if cast_info is None:
+                    return
+                if cast_info.friendly_name == GOOGLE_HOME_NAME:
+                    found_host = cast_info.host
+                    found_port = cast_info.port
+                    found_uuid = cast_info.uuid
+                    found_model_name = cast_info.model_name
+                    discover_complete.set()
+
+            zconf = zeroconf.Zeroconf()
+            browser = pychromecast.discovery.CastBrowser(
+                pychromecast.discovery.SimpleCastListener(add_callback=add_callback),
+                zconf,
+            )
+            _devices_cell[0] = browser.devices
+            browser.start_discovery()
+            discover_complete.wait(timeout=10.0)
+            browser.stop_discovery()
+            browser = None
+            zconf.close()
+            zconf = None
+
+            if not found_host or not found_port:
+                log.error("Google Home '%s' not found (host=%r, port=%r).", GOOGLE_HOME_NAME, found_host, found_port)
+                return False
+
+        cast = pychromecast.get_chromecast_from_host((found_host, found_port, found_uuid, found_model_name, GOOGLE_HOME_NAME))
+        cast.wait()
+        mc = cast.media_controller
+        mc.play_media(audio_url, "audio/wav", stream_type="BUFFERED")
+        mc.block_until_active(timeout=30)
+
+        playback_ready = False
+        for _ in range(MAX_PLAYBACK_CHECK_ATTEMPTS):
+            mc.update_status()
+            status = mc.status
+            if status is None:
+                time.sleep(PLAYBACK_CHECK_INTERVAL_SEC)
+                continue
+
+            state = status.player_state
+            idle_reason = status.idle_reason
+
+            if state in {"PLAYING", "BUFFERING"}:
+                playback_ready = True
+                break
+            if state == "IDLE" and idle_reason in {"ERROR", "CANCELLED", "INTERRUPTED"}:
+                log.error("Chromecast playback ended with idle_reason='%s' for '%s'.", idle_reason, GOOGLE_HOME_NAME)
+                break
+            time.sleep(PLAYBACK_CHECK_INTERVAL_SEC)
+
+        if not playback_ready:
+            log.error("Chromecast did not start playback for '%s'.", GOOGLE_HOME_NAME)
+            return False
+
+        # wait duration plus small buffer
+        time.sleep(max(0.5, duration_sec + 0.2))
+        return True
+
+    except Exception as e:
+        log.exception("Sound notification failed: %s", e)
         return False
     finally:
         if server:
