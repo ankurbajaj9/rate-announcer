@@ -44,3 +44,12 @@ ALERT_OFFSET_MINUTES = int(os.getenv("ALERT_OFFSET_MINUTES", "1"))
 
 # Web UI
 WEB_PORT = int(os.getenv("WEB_PORT", "8080"))
+
+# Enable or disable sending notifications (Google Home TTS / sound).
+# Recognize truthy values: 1, true, yes, on (case-insensitive). Default: enabled.
+ENABLE_NOTIFICATIONS = os.getenv("ENABLE_NOTIFICATIONS", "true").lower() in (
+	"1",
+	"true",
+	"yes",
+	"on",
+)

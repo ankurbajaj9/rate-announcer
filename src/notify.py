@@ -29,6 +29,7 @@ from src.config import (
     GOOGLE_HOME_PORT,
     SERVE_PORT,
     TTS_LANGUAGE,
+    ENABLE_NOTIFICATIONS,
 )
 
 log = logging.getLogger(__name__)
@@ -89,6 +90,11 @@ def notify_google_home(message: str) -> bool:
 
     Returns True on success, False on any failure.
     """
+    # Global toggle: skip all notifications when disabled
+    if not ENABLE_NOTIFICATIONS:
+        log.info("Notifications disabled via ENABLE_NOTIFICATIONS; skipping TTS.")
+        return True
+
     audio_path = None
     audio_dir = None
     server = None
@@ -259,6 +265,11 @@ def notify_play_sound(duration_sec: float = 0.6, frequency_hz: int = 880) -> boo
     Generate short sine-wave WAV and play on configured Google Home.
     Returns True on success, False on failure.
     """
+    # Global toggle: skip all notifications when disabled
+    if not ENABLE_NOTIFICATIONS:
+        log.info("Notifications disabled via ENABLE_NOTIFICATIONS; skipping sound.")
+        return True
+
     audio_path = None
     audio_dir = None
     server = None
