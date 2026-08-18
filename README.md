@@ -63,6 +63,14 @@ The dashboard will be available on the configured `WEB_PORT`, and the audio serv
 
 Refer to [SETUP.md](SETUP.md) for detailed instructions on setting up a systemd service to run the monitor as a background daemon.
 
+## Automation (GitHub Actions)
+
+This repository includes a workflow at `/home/runner/work/rate-announcer/rate-announcer/.github/workflows/publish-image.yml` that builds and pushes `ankurbajaj9/home:rate-announcer` on every successful push to `main`.
+
+Configure these repository secrets before using it:
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN`
+
 ## Project Structure
 
 - `main.py`: Entry point for the application.
