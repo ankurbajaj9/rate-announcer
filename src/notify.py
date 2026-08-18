@@ -24,23 +24,23 @@ import math
 import struct
 
 from src.config import (
+    DISCOVERY_TIMEOUT_SEC,
+    ENABLE_NOTIFICATIONS,
     GOOGLE_HOME_HOST,
     GOOGLE_HOME_NAME,
     GOOGLE_HOME_PORT,
+    MAX_PLAYBACK_CHECK_ATTEMPTS,
+    MEDIA_START_TIMEOUT_SEC,
+    PLAYBACK_CHECK_INTERVAL_SEC,
     SERVE_PORT,
     TTS_LANGUAGE,
     ENABLE_NOTIFICATIONS,
     EVENTS_DB_FILE,
+
 )
 from src.events import record_event
 
 log = logging.getLogger(__name__)
-
-# How long to wait between playback state polls (seconds)
-PLAYBACK_CHECK_INTERVAL_SEC = 0.5
-# Maximum number of state polls before declaring playback failed (total: 10 s)
-MAX_PLAYBACK_CHECK_ATTEMPTS = 20
-
 
 def get_local_ip() -> str:
     """Return the local IPv4 address used to reach the internet."""
@@ -169,7 +169,7 @@ def notify_google_home(message: str, drop_time_iso: str | None = None) -> bool:
             _devices_cell[0] = browser.devices
             browser.start_discovery()
 
-            discover_complete.wait(timeout=10.0)
+            discover_complete.wait(timeout=DISCOVERY_TIMEOUT_SEC)
 
             # Tear down mDNS discovery immediately after the device is found.
             # Closing Zeroconf here ensures the cast object (created below via a
@@ -204,7 +204,7 @@ def notify_google_home(message: str, drop_time_iso: str | None = None) -> bool:
         mc = cast.media_controller
         # TTS is a finite MP3 file; use Chromecast-compatible audio/mpeg as BUFFERED media.
         mc.play_media(audio_url, "audio/mpeg", stream_type="BUFFERED")
-        mc.block_until_active(timeout=30)
+        mc.block_until_active(timeout=MEDIA_START_TIMEOUT_SEC)
 
         playback_ready = False
         for _ in range(MAX_PLAYBACK_CHECK_ATTEMPTS):
@@ -341,7 +341,7 @@ def notify_play_sound(duration_sec: float = 0.6, frequency_hz: int = 880) -> boo
             )
             _devices_cell[0] = browser.devices
             browser.start_discovery()
-            discover_complete.wait(timeout=10.0)
+            discover_complete.wait(timeout=DISCOVERY_TIMEOUT_SEC)
             browser.stop_discovery()
             browser = None
             zconf.close()
@@ -355,7 +355,7 @@ def notify_play_sound(duration_sec: float = 0.6, frequency_hz: int = 880) -> boo
         cast.wait()
         mc = cast.media_controller
         mc.play_media(audio_url, "audio/wav", stream_type="BUFFERED")
-        mc.block_until_active(timeout=30)
+        mc.block_until_active(timeout=MEDIA_START_TIMEOUT_SEC)
 
         playback_ready = False
         for _ in range(MAX_PLAYBACK_CHECK_ATTEMPTS):

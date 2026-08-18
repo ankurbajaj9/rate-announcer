@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch, MagicMock, mock_open, call
 from datetime import datetime, date, timedelta
 import pandas as pd
+import requests
 
 from src.config import NOTIFICATION_COOLDOWN_SEC
 from src.monitor import _build_summary_message, is_quiet_hour
@@ -104,6 +105,63 @@ class TestMonitor(unittest.TestCase):
             self.assertTrue(is_new)
             self.assertEqual(result.iloc[0], 100.0)
             self.assertEqual(result.iloc[-1], 150.0)
+
+    @patch("src.prices.lookup_area")
+    @patch("src.prices.EntsoePandasClient")
+    def test_fetch_quarter_prices_retries_exact_window_on_http_400(
+        self, mock_client_class, mock_lookup_area
+    ):
+        """HTTP 400 from padded query should retry with exact day window."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        mock_lookup_area.return_value = "SE3_AREA"
+
+        tz = "Europe/Stockholm"
+        start = pd.Timestamp("2026-04-17", tz=tz)
+        times = pd.date_range(start, periods=2, freq="1h")
+        fallback_prices = pd.Series([100.0, 150.0], index=times)
+
+        response = MagicMock(status_code=400)
+        mock_client.query_day_ahead_prices.side_effect = requests.exceptions.HTTPError(response=response)
+        mock_client._query_day_ahead_prices.return_value = fallback_prices
+
+        with patch("src.prices.os.path.exists", return_value=False), \
+             patch("pandas.to_pickle"):
+            result, is_new = fetch_quarter_prices(start.date())
+
+        self.assertTrue(is_new)
+        self.assertEqual(len(result), 5)
+        mock_lookup_area.assert_called_once()
+        mock_client._query_day_ahead_prices.assert_called_once()
+
+    @patch("src.prices.time.sleep")
+    @patch("src.prices.EntsoePandasClient")
+    def test_fetch_quarter_prices_retries_with_exponential_backoff(
+        self, mock_client_class, mock_sleep
+    ):
+        """Future-day fetch retries with exponential backoff on transient failures."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        tomorrow = date.today() + timedelta(days=1)
+        tz = "Europe/Stockholm"
+        start = pd.Timestamp(tomorrow, tz=tz)
+        times = pd.date_range(start, periods=2, freq="1h")
+        mock_prices = pd.Series([100.0, 150.0], index=times)
+
+        mock_client.query_day_ahead_prices.side_effect = [
+            requests.exceptions.ConnectionError("temporary network issue"),
+            requests.exceptions.ConnectionError("temporary network issue"),
+            mock_prices,
+        ]
+
+        with patch("src.prices.os.path.exists", return_value=False), \
+             patch("pandas.to_pickle"):
+            result, is_new = fetch_quarter_prices(tomorrow)
+
+        self.assertTrue(is_new)
+        self.assertEqual(len(result), 5)
+        self.assertEqual(mock_sleep.call_args_list, [call(30), call(60)])
 
     @patch("src.notify.get_local_ip", return_value="127.0.0.1")
     @patch("src.notify.zeroconf.Zeroconf")

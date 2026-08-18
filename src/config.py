@@ -45,9 +45,12 @@ SUMMARY_ANNOUNCE_DELAY_SEC = int(os.getenv("SUMMARY_ANNOUNCE_DELAY_SEC", "2"))
 # How many minutes before a high-price timeslot to play the alert.
 # Set via environment variable `ALERT_OFFSET_MINUTES`. Default: 1 minute.
 ALERT_OFFSET_MINUTES = int(os.getenv("ALERT_OFFSET_MINUTES", "1"))
+PLANNER_CRON_HOUR = int(os.getenv("PLANNER_CRON_HOUR", "14"))
+PLANNER_CRON_MINUTE = int(os.getenv("PLANNER_CRON_MINUTE", "0"))
 
 # Web UI
 WEB_PORT = int(os.getenv("WEB_PORT", "8080"))
+WEB_HOST = os.getenv("WEB_HOST", "0.0.0.0")
 
 # Enable or disable sending notifications (Google Home TTS / sound).
 # Recognize truthy values: 1, true, yes, on (case-insensitive). Default: enabled.
@@ -57,3 +60,16 @@ ENABLE_NOTIFICATIONS = os.getenv("ENABLE_NOTIFICATIONS", "true").lower() in (
 	"yes",
 	"on",
 )
+
+# Notification runtime tuning
+DISCOVERY_TIMEOUT_SEC = float(os.getenv("DISCOVERY_TIMEOUT_SEC", "10"))
+MEDIA_START_TIMEOUT_SEC = int(os.getenv("MEDIA_START_TIMEOUT_SEC", "30"))
+PLAYBACK_CHECK_INTERVAL_SEC = float(os.getenv("PLAYBACK_CHECK_INTERVAL_SEC", "0.5"))
+MAX_PLAYBACK_CHECK_ATTEMPTS = int(os.getenv("MAX_PLAYBACK_CHECK_ATTEMPTS", "20"))
+
+# Price fetch / API tuning
+PRICE_FETCH_MAX_ATTEMPTS = int(os.getenv("PRICE_FETCH_MAX_ATTEMPTS", "6"))
+PRICE_FETCH_INITIAL_DELAY_SEC = int(os.getenv("PRICE_FETCH_INITIAL_DELAY_SEC", "30"))
+PRICE_FETCH_MAX_DELAY_SEC = int(os.getenv("PRICE_FETCH_MAX_DELAY_SEC", "900"))
+FX_FALLBACK_RATE = float(os.getenv("FX_FALLBACK_RATE", "11.0"))
+FX_REQUEST_TIMEOUT_SEC = int(os.getenv("FX_REQUEST_TIMEOUT_SEC", "10"))
