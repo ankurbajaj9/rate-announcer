@@ -21,18 +21,17 @@ from entsoe.mappings import lookup_area
 
 from src.config import (
     ENTSOE_API_TOKEN,
+    FX_FALLBACK_RATE,
     FX_CACHE_FILE,
+    FX_REQUEST_TIMEOUT_SEC,
     PRICE_AREA,
     PRICE_CACHE_FILE,
+    PRICE_FETCH_INITIAL_DELAY_SEC,
+    PRICE_FETCH_MAX_ATTEMPTS,
+    PRICE_FETCH_MAX_DELAY_SEC,
 )
 
 log = logging.getLogger(__name__)
-
-_FX_FALLBACK_RATE = 11.0
-_PRICE_FETCH_MAX_ATTEMPTS = 6
-_PRICE_FETCH_INITIAL_DELAY_SEC = 30
-_PRICE_FETCH_MAX_DELAY_SEC = 15 * 60
-
 
 def _is_retryable_price_fetch_error(exc: Exception) -> bool:
     """Return True when a transient ENTSO-E fetch failure should be retried."""
@@ -88,7 +87,7 @@ def fetch_quarter_prices(target_date: date) -> tuple[Any, bool]:
 
     log.info("Fetching %s day-ahead prices from ENTSO-E (%s) ...", PRICE_AREA, target_date)
     attempts = 1
-    delay_seconds = _PRICE_FETCH_INITIAL_DELAY_SEC
+    delay_seconds = PRICE_FETCH_INITIAL_DELAY_SEC
     should_retry = target_date > today
     while True:
         try:
@@ -109,7 +108,7 @@ def fetch_quarter_prices(target_date: date) -> tuple[Any, bool]:
             if (
                 not should_retry
                 or not _is_retryable_price_fetch_error(exc)
-                or attempts >= _PRICE_FETCH_MAX_ATTEMPTS
+                or attempts >= PRICE_FETCH_MAX_ATTEMPTS
             ):
                 raise
             log.warning(
@@ -118,11 +117,11 @@ def fetch_quarter_prices(target_date: date) -> tuple[Any, bool]:
                 exc.__class__.__name__,
                 delay_seconds,
                 attempts + 1,
-                _PRICE_FETCH_MAX_ATTEMPTS,
+                PRICE_FETCH_MAX_ATTEMPTS,
             )
             time.sleep(delay_seconds)
             attempts += 1
-            delay_seconds = min(delay_seconds * 2, _PRICE_FETCH_MAX_DELAY_SEC)
+            delay_seconds = min(delay_seconds * 2, PRICE_FETCH_MAX_DELAY_SEC)
 
     # Resample to 15-min and forward-fill if the source is hourly
     if isinstance(prices.index, pd.DatetimeIndex):
@@ -171,7 +170,8 @@ def get_eur_to_sek(target_date: date) -> float:
 
     try:
         r = requests.get(
-            "https://api.frankfurter.app/latest?from=EUR&to=SEK", timeout=10
+            "https://api.frankfurter.app/latest?from=EUR&to=SEK",
+            timeout=FX_REQUEST_TIMEOUT_SEC,
         )
         r.raise_for_status()
         rate = r.json()["rates"]["SEK"]
@@ -179,9 +179,9 @@ def get_eur_to_sek(target_date: date) -> float:
         if not isinstance(rate, (int, float)):
             log.warning(
                 "Unexpected rate value from Frankfurter API (%r) — using fallback rate %.1f SEK/EUR",
-                rate, _FX_FALLBACK_RATE,
+                rate, FX_FALLBACK_RATE,
             )
-            return _FX_FALLBACK_RATE
+            return FX_FALLBACK_RATE
 
         rate = float(rate)
 
@@ -194,8 +194,8 @@ def get_eur_to_sek(target_date: date) -> float:
 
         return rate
     except Exception as e:
-        log.warning("FX fetch failed (%s) — using fallback rate %.1f SEK/EUR", e, _FX_FALLBACK_RATE)
-        return _FX_FALLBACK_RATE
+        log.warning("FX fetch failed (%s) — using fallback rate %.1f SEK/EUR", e, FX_FALLBACK_RATE)
+        return FX_FALLBACK_RATE
 
 
 def eur_mwh_to_sek_kwh(eur_mwh: float, fx: float) -> float:

@@ -19,6 +19,7 @@ from src.config import (
     PRICE_AREA,
     PRICE_CACHE_FILE,
     THRESHOLD_PERCENT,
+    WEB_HOST,
     WEB_PORT,
 )
 from src.prices import eur_mwh_to_sek_kwh, get_eur_to_sek
@@ -271,9 +272,9 @@ def start_web_server() -> None:
     WSGI server (e.g. gunicorn).
     """
     thread = threading.Thread(
-        target=lambda: app.run(host="0.0.0.0", port=WEB_PORT, use_reloader=False),
+        target=lambda: app.run(host=WEB_HOST, port=WEB_PORT, use_reloader=False),
         daemon=True,
         name="web-ui",
     )
     thread.start()
-    log.info("Web UI available at http://0.0.0.0:%d/", WEB_PORT)
+    log.info("Web UI available at http://%s:%d/", WEB_HOST, WEB_PORT)
