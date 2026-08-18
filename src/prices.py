@@ -16,6 +16,7 @@ from typing import Any
 
 import pandas as pd
 from entsoe import EntsoePandasClient
+from entsoe.mappings import lookup_area
 
 from src.config import (
     ENTSOE_API_TOKEN,
@@ -72,7 +73,18 @@ def fetch_quarter_prices(target_date: date) -> tuple[Any, bool]:
     end = start + pd.Timedelta(days=1)
 
     log.info("Fetching %s day-ahead prices from ENTSO-E (%s) ...", PRICE_AREA, target_date)
-    prices = client.query_day_ahead_prices(PRICE_AREA, start=start, end=end)
+    try:
+        prices = client.query_day_ahead_prices(PRICE_AREA, start=start, end=end)
+    except requests.exceptions.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else None
+        if status != 400 or not hasattr(client, "_query_day_ahead_prices"):
+            raise
+        log.warning(
+            "ENTSO-E rejected padded day-ahead window for %s; retrying exact day window.",
+            target_date,
+        )
+        area = lookup_area(PRICE_AREA)
+        prices = client._query_day_ahead_prices(area, start=start, end=end)
 
     # Resample to 15-min and forward-fill if the source is hourly
     if isinstance(prices.index, pd.DatetimeIndex):
