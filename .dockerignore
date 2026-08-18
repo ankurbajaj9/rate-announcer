@@ -11,4 +11,5 @@ venv/
 .env.*
 .git/
 .idea/
+.conda/
 *.log
