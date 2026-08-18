@@ -10,6 +10,7 @@ Responsibilities:
 import json
 import logging
 import os
+import time
 import requests
 from datetime import date, timedelta
 from typing import Any
@@ -28,6 +29,19 @@ from src.config import (
 log = logging.getLogger(__name__)
 
 _FX_FALLBACK_RATE = 11.0
+_PRICE_FETCH_MAX_ATTEMPTS = 6
+_PRICE_FETCH_INITIAL_DELAY_SEC = 30
+_PRICE_FETCH_MAX_DELAY_SEC = 15 * 60
+
+
+def _is_retryable_price_fetch_error(exc: Exception) -> bool:
+    """Return True when a transient ENTSO-E fetch failure should be retried."""
+    if isinstance(exc, requests.exceptions.HTTPError):
+        status = exc.response.status_code if exc.response is not None else None
+        return status in {400, 429, 500, 502, 503, 504}
+    if isinstance(exc, requests.exceptions.RequestException):
+        return True
+    return exc.__class__.__name__ == "NoMatchingDataError"
 
 
 def _load_price_cache() -> dict:
@@ -73,18 +87,42 @@ def fetch_quarter_prices(target_date: date) -> tuple[Any, bool]:
     end = start + pd.Timedelta(days=1)
 
     log.info("Fetching %s day-ahead prices from ENTSO-E (%s) ...", PRICE_AREA, target_date)
-    try:
-        prices = client.query_day_ahead_prices(PRICE_AREA, start=start, end=end)
-    except requests.exceptions.HTTPError as exc:
-        status = exc.response.status_code if exc.response is not None else None
-        if status != 400 or not hasattr(client, "_query_day_ahead_prices"):
-            raise
-        log.warning(
-            "ENTSO-E rejected padded day-ahead window for %s; retrying exact day window.",
-            target_date,
-        )
-        area = lookup_area(PRICE_AREA)
-        prices = client._query_day_ahead_prices(area, start=start, end=end)
+    attempts = 1
+    delay_seconds = _PRICE_FETCH_INITIAL_DELAY_SEC
+    should_retry = target_date > today
+    while True:
+        try:
+            try:
+                prices = client.query_day_ahead_prices(PRICE_AREA, start=start, end=end)
+            except requests.exceptions.HTTPError as exc:
+                status = exc.response.status_code if exc.response is not None else None
+                if status != 400 or not hasattr(client, "_query_day_ahead_prices"):
+                    raise
+                log.warning(
+                    "ENTSO-E rejected padded day-ahead window for %s; retrying exact day window.",
+                    target_date,
+                )
+                area = lookup_area(PRICE_AREA)
+                prices = client._query_day_ahead_prices(area, start=start, end=end)
+            break
+        except Exception as exc:
+            if (
+                not should_retry
+                or not _is_retryable_price_fetch_error(exc)
+                or attempts >= _PRICE_FETCH_MAX_ATTEMPTS
+            ):
+                raise
+            log.warning(
+                "Day-ahead prices for %s not available yet (%s). Retrying in %d second(s) [attempt %d/%d].",
+                target_date,
+                exc.__class__.__name__,
+                delay_seconds,
+                attempts + 1,
+                _PRICE_FETCH_MAX_ATTEMPTS,
+            )
+            time.sleep(delay_seconds)
+            attempts += 1
+            delay_seconds = min(delay_seconds * 2, _PRICE_FETCH_MAX_DELAY_SEC)
 
     # Resample to 15-min and forward-fill if the source is hourly
     if isinstance(prices.index, pd.DatetimeIndex):

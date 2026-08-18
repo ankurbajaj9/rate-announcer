@@ -133,6 +133,35 @@ class TestMonitor(unittest.TestCase):
         mock_lookup_area.assert_called_once()
         mock_client._query_day_ahead_prices.assert_called_once()
 
+    @patch("src.prices.time.sleep")
+    @patch("src.prices.EntsoePandasClient")
+    def test_fetch_quarter_prices_retries_with_exponential_backoff(
+        self, mock_client_class, mock_sleep
+    ):
+        """Future-day fetch retries with exponential backoff on transient failures."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        tomorrow = date.today() + timedelta(days=1)
+        tz = "Europe/Stockholm"
+        start = pd.Timestamp(tomorrow, tz=tz)
+        times = pd.date_range(start, periods=2, freq="1h")
+        mock_prices = pd.Series([100.0, 150.0], index=times)
+
+        mock_client.query_day_ahead_prices.side_effect = [
+            requests.exceptions.ConnectionError("temporary network issue"),
+            requests.exceptions.ConnectionError("temporary network issue"),
+            mock_prices,
+        ]
+
+        with patch("src.prices.os.path.exists", return_value=False), \
+             patch("pandas.to_pickle"):
+            result, is_new = fetch_quarter_prices(tomorrow)
+
+        self.assertTrue(is_new)
+        self.assertEqual(len(result), 5)
+        self.assertEqual(mock_sleep.call_args_list, [call(30), call(60)])
+
     @patch("src.notify.get_local_ip", return_value="127.0.0.1")
     @patch("src.notify.zeroconf.Zeroconf")
     @patch("src.notify.pychromecast")
