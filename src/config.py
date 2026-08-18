@@ -36,6 +36,10 @@ STATE_FILE = os.getenv("STATE_FILE", "/tmp/price_monitor_state")
 PRICE_CACHE_FILE = os.getenv("PRICE_CACHE_FILE", "/tmp/rate_announcer_prices.pkl")
 FX_CACHE_FILE = os.getenv("FX_CACHE_FILE", "/tmp/rate_announcer_fx.json")
 
+# Events log file (append-only JSON lines) to record notifications and actions.
+# This is separate from STATE_FILE which may be used for compact state.
+EVENTS_DB_FILE = os.getenv("EVENTS_DB_FILE", "/tmp/rate_announcer_events.db")
+
 # Scheduling
 SUMMARY_ANNOUNCE_DELAY_SEC = int(os.getenv("SUMMARY_ANNOUNCE_DELAY_SEC", "2"))
 # How many minutes before a high-price timeslot to play the alert.

@@ -1,0 +1,12 @@
+{
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "chat.tools.terminal.autoApprove": {
+        "docker build": true,
+        "/^source /Users/ankurbajaj/opt/anaconda3/etc/profile\\.d/conda\\.sh && conda activate rate-announcer && python -m unittest -v$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "conda": true
+    }
+}

@@ -7,7 +7,7 @@ the background scheduler.
 """
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -17,9 +17,11 @@ from src.config import (
     SUMMARY_ANNOUNCE_DELAY_SEC,
     ALERT_OFFSET_MINUTES,
     THRESHOLD_PERCENT,
+    NOTIFICATION_COOLDOWN_SEC,
 )
 from src.notify import notify_google_home, notify_play_sound
 from src.prices import eur_mwh_to_sek_kwh, fetch_quarter_prices, get_eur_to_sek
+from src.events import get_announced_drop_times
 
 # Configure logging once for the whole application
 logging.basicConfig(
@@ -34,6 +36,7 @@ scheduler = BackgroundScheduler()
 
 # ── Time helpers ─────────────────────────────
 
+
 def is_quiet_hour(dt: datetime) -> bool:
     """Return True if *dt* falls within the configured quiet hours."""
     h = dt.hour
@@ -43,6 +46,7 @@ def is_quiet_hour(dt: datetime) -> bool:
 
 
 # ── Day planning ─────────────────────────────
+
 
 def _build_summary_message(
     day_word: str,
@@ -69,7 +73,6 @@ def _build_summary_message(
 
 def _build_alert_message(price_ore: float, pct: float, drop_time: datetime | None) -> str:
     """Return the high-price alert announcement text."""
-    # Compact alert message: concise for faster playback
     msg = f"Price alert: {price_ore} öre ({pct:.0f}% of max)."
     if drop_time:
         msg += f" Drops at {drop_time.strftime('%H:%M')}."
@@ -143,7 +146,10 @@ def plan_day(target_date: date, force_summary: bool = False) -> None:
 
         log.info(
             "Planning for %s | Max SEK: %.4f | Threshold (%.0f%%): %.4f",
-            target_date, daily_max_sek, THRESHOLD_PERCENT * 100, threshold,
+            target_date,
+            daily_max_sek,
+            THRESHOLD_PERCENT * 100,
+            threshold,
         )
 
         # Announce the daily summary on startup (force_summary) or when rates are
@@ -157,12 +163,29 @@ def plan_day(target_date: date, force_summary: bool = False) -> None:
                 low,
             )
             log.info("Scheduling daily summary notification: %s", summary_msg)
-            scheduler.add_job(
-                notify_google_home,
-                "date",
-                run_date=datetime.now() + timedelta(seconds=SUMMARY_ANNOUNCE_DELAY_SEC),
-                args=[summary_msg],
-            )
+            # Prevent duplicate summary jobs when restarting quickly
+            run_summary_at = datetime.now() + timedelta(seconds=SUMMARY_ANNOUNCE_DELAY_SEC)
+            duplicate = False
+            for job in scheduler.get_jobs():
+                if getattr(job, "func", None) == notify_google_home and job.next_run_time:
+                    try:
+                        # Compare next_run_time timestamps to avoid timezone issues
+                        if abs(job.next_run_time.timestamp() - run_summary_at.timestamp()) < 2:
+                            duplicate = True
+                            break
+                        # also check identical message args
+                        if getattr(job, "args", None) and job.args and job.args[0] == summary_msg:
+                            duplicate = True
+                            break
+                    except Exception:
+                        continue
+            if not duplicate:
+                scheduler.add_job(
+                    notify_google_home,
+                    "date",
+                    run_date=run_summary_at,
+                    args=[summary_msg],
+                )
 
         # Schedule one-shot alerts at every transition into a high-price window
         for i in range(len(prices_sek)):
@@ -198,19 +221,72 @@ def plan_day(target_date: date, force_summary: bool = False) -> None:
             msg = _build_alert_message(price_ore, pct, drop_time)
             log.info(
                 "Scheduling notification for %.4f SEK (%.0f%%) at %s (play at %s). Drop time: %s",
-                current_sek, pct, interval_time, run_date, drop_time,
+                current_sek,
+                pct,
+                interval_time,
+                run_date,
+                drop_time,
             )
-            scheduler.add_job(
-                notify_google_home,
-                "date",
-                run_date=run_date,
-                args=[msg],
-            )
+
+            # Deduplicate and check cooldown: skip scheduling if similar job exists or is too soon
+            skip = False
+            try:
+                announced = get_announced_drop_times()
+            except Exception:
+                announced = []
+
+            now = datetime.now()
+            now_utc_ts = datetime.now(timezone.utc).timestamp()
+
+            # Check for cooldown (if not overridden by job) and check identical message
+            for job in scheduler.get_jobs():
+                if getattr(job, "func", None) != notify_google_home or not job.next_run_time:
+                    continue
+                try:
+                    job_ts = job.next_run_time.timestamp()
+                    # Check cooldown period: is the run too soon after a previous run?
+                    if 0 <= (now.timestamp() - job_ts) < NOTIFICATION_COOLDOWN_SEC:
+                        skip = True
+                        log.info("Skipping alert due to active cooldown.")
+                        break
+                except Exception:
+                    pass
+
+                # check identical message
+                try:
+                    if getattr(job, "args", None) and job.args and job.args[0] == msg:
+                        skip = True
+                        log.info("Skipping alert due to identical message.")
+                        break
+                except Exception:
+                    pass
+
+            # Check event log for success cooldown
+            drop_time_iso = drop_time.isoformat() if drop_time else None
+            for event in announced:
+                if drop_time_iso and event.get('drop_time_iso') == drop_time_iso and event.get('success'):
+                    # Check time since last successful announcement with this same key property (i.e., dropped at the same time)
+                    event_ts = datetime.fromisoformat(event['ts'].replace("Z", "+00:00"))
+                    event_ts_val = event_ts.timestamp() if event_ts.tzinfo else event_ts.timestamp()
+                    if 0 <= (now_utc_ts - event_ts_val) < NOTIFICATION_COOLDOWN_SEC:
+                        skip = True
+                        log.info("Skipping alert due to recent successful announcement for this drop time.")
+                        break
+
+
+            if not skip:
+                scheduler.add_job(
+                    notify_google_home,
+                    "date",
+                    run_date=run_date,
+                    args=[msg],
+                    kwargs={"drop_time_iso": drop_time.isoformat() if drop_time else None},
+                )
+
             # Schedule minor notification when peak period ends
             try:
                 end_run_date = peak_end
                 if end_run_date and end_run_date > current_time and not is_quiet_hour(end_run_date):
-                    # schedule short non-verbal sound at peak end
                     scheduler.add_job(
                         notify_play_sound,
                         "date",
@@ -230,6 +306,7 @@ def daily_planner_job() -> None:
 
 
 # ── Scheduler entry point ────────────────────
+
 
 def start_scheduler() -> BackgroundScheduler:
     """

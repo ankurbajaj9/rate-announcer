@@ -4,6 +4,7 @@ from unittest.mock import patch, MagicMock, mock_open, call
 from datetime import datetime, date, timedelta
 import pandas as pd
 
+from src.config import NOTIFICATION_COOLDOWN_SEC
 from src.monitor import _build_summary_message, is_quiet_hour
 from src.notify import get_local_ip, notify_google_home
 from src.prices import eur_mwh_to_sek_kwh, fetch_quarter_prices, get_eur_to_sek
@@ -430,5 +431,58 @@ class TestMonitor(unittest.TestCase):
         self.assertEqual(mock_plan_day.call_args_list[1], call(date(2026, 4, 21)))
         mock_next_log.assert_called_once()
 
-if __name__ == "__main__":
-    unittest.main()
+    @patch("src.monitor.scheduler")
+    @patch("src.monitor.get_announced_drop_times", return_value=[])
+    def test_plan_day_skips_due_to_job_cooldown(self, mock_get_announced, mock_scheduler):
+        """Test that plan_day skips scheduling an alert if another notification is too recent."""
+        from src.monitor import plan_day
+
+        mock_prices = pd.Series([90.0], index=pd.to_datetime(['2026-04-21 10:30']))
+        
+        # Mock the scheduler to have a job that is too recent
+        recent_run = datetime.now() - timedelta(seconds=NOTIFICATION_COOLDOWN_SEC * 0.5) # Half cooldown period passed
+        job = MagicMock()
+        job.func = notify_google_home
+        job.next_run_time = recent_run
+
+        mock_scheduler.get_jobs.return_value = [job]
+
+        # Mock the other dependencies to allow plan_day to run past fetch logic
+        with patch("src.monitor.fetch_quarter_prices", return_value=(mock_prices, False)), \
+             patch("src.monitor.is_quiet_hour", return_value=False), \
+             patch("src.monitor.get_eur_to_sek", return_value=11.0):
+            
+            # We must ensure the price condition is met for scheduling to even happen
+            plan_day(date(2026, 4, 21))
+
+        # Check if the alert job was added (it should not have been)
+        mock_scheduler.add_job.assert_not_called()
+
+    @patch("src.monitor.scheduler")
+    def test_plan_day_skips_due_to_event_log_cooldown(self, mock_scheduler):
+        """Test that plan_day skips scheduling an alert if a similar success event is too recent in the log."""
+        from src.monitor import plan_day
+
+        mock_prices = pd.Series([90.0], index=pd.to_datetime(['2026-04-21 10:30']))
+        
+        # Simulate a successful announcement very recently for the same drop time (via event log)
+        recent_ts = datetime.now() - timedelta(seconds=NOTIFICATION_COOLDOWN_SEC * 0.5) # Half cooldown period passed
+        mock_event = {
+            'drop_time_iso': '2026-04-21T10:30:00',
+            'ts': recent_ts.isoformat(),
+            'success': True,
+        }
+        
+        # Mock the event log to contain a recent success for this specific drop time
+        mock_get_announced = patch("src.events.get_announced_drop_times", return_value=[mock_event])
+
+        with mock_get_announced.start() as mock_get_ann, \
+             patch("src.monitor.fetch_quarter_prices", return_value=(mock_prices, False)), \
+             patch("src.monitor.is_quiet_hour", return_value=False), \
+             patch("src.monitor.get_eur_to_sek", return_value=11.0):
+
+            # Run plan_day to force the alert scheduling logic
+            plan_day(date(2026, 4, 21))
+
+        mock_scheduler.add_job.assert_not_called()
+

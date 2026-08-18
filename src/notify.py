@@ -30,7 +30,9 @@ from src.config import (
     SERVE_PORT,
     TTS_LANGUAGE,
     ENABLE_NOTIFICATIONS,
+    EVENTS_DB_FILE,
 )
+from src.events import record_event
 
 log = logging.getLogger(__name__)
 
@@ -77,7 +79,7 @@ def _serve_file(filepath: str, port: int):
     return server, f"http://{get_local_ip()}:{port}/{filename}"
 
 
-def notify_google_home(message: str) -> bool:
+def notify_google_home(message: str, drop_time_iso: str | None = None) -> bool:
     """
     Speak *message* via the configured Google Home device.
 
@@ -101,6 +103,7 @@ def notify_google_home(message: str) -> bool:
     browser = None
     zconf = None
     cast = None
+    success = False
     try:
         log.info("Generating TTS audio ...")
         tts = gTTS(text=message, lang=TTS_LANGUAGE)
@@ -233,6 +236,7 @@ def notify_google_home(message: str) -> bool:
         # Estimate message duration and wait for it to finish playing
         wait_time = max(10, len(message) // 8)
         time.sleep(wait_time)
+        success = True
         return True
 
     except Exception as e:
@@ -258,6 +262,11 @@ def notify_google_home(message: str) -> bool:
                 os.rmdir(audio_dir)
             except OSError as exc:
                 log.warning("Failed to remove temp audio directory %s: %s", audio_dir, exc)
+        # Record event to SQLite events DB
+        try:
+            record_event("notify_google_home", bool(success), message=message, drop_time_iso=drop_time_iso)
+        except Exception as exc:
+            log.warning("Failed to record event to DB %s: %s", EVENTS_DB_FILE, exc)
 
 
 def notify_play_sound(duration_sec: float = 0.6, frequency_hz: int = 880) -> bool:
