@@ -17,6 +17,11 @@ Fetches SE3 15-minute spot prices from ENTSO-E Transparency Platform and announc
     pip install -r requirements.txt
     ```
 
+    To run tests:
+    ```bash
+    pip install -r requirements-test.txt
+    ```
+
 3.  **Configure Environment Variables**:
     Copy `.env.example` to `.env` and fill in your details:
     ```bash

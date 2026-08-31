@@ -30,11 +30,21 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+To run tests:
+```bash
+pip install -r requirements-test.txt
+```
+
 ### Using Conda
 ```bash
 conda create --name rate-announcer python=3.12
 conda activate rate-announcer
 pip install -r requirements.txt
+```
+
+To run tests:
+```bash
+pip install -r requirements-test.txt
 ```
 
 ---
