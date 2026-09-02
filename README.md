@@ -12,7 +12,7 @@ Fetches SE3 15-minute spot prices from ENTSO-E Transparency Platform and announc
 
 2.  **Setup Conda Environment**:
     ```bash
-    conda create --name rate-announcer python=3.12
+    conda create --name rate-announcer python=3.11
     conda activate rate-announcer
     pip install -r requirements.txt
     ```
@@ -41,6 +41,8 @@ python main.py
 ## Docker on Raspberry Pi
 
 The app can run as a container on Raspberry Pi with one image for both the scheduler and the web UI.
+
+The published container runs on Python 3.11, so local environments should use Python 3.11 as well to avoid binary package mismatches with dependencies such as NumPy and Pandas.
 
 1.  **Build the image**:
     ```bash

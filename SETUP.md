@@ -37,7 +37,7 @@ pip install -r requirements-test.txt
 
 ### Using Conda
 ```bash
-conda create --name rate-announcer python=3.12
+conda create --name rate-announcer python=3.11
 conda activate rate-announcer
 pip install -r requirements.txt
 ```
