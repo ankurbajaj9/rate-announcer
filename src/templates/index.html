@@ -14,6 +14,7 @@
       min-height: 100vh;
       padding: 1.5rem;
     }
+    main { max-width: 1100px; margin: 0 auto; }
 
     header {
       display: flex;
@@ -71,6 +72,26 @@
     .card.highlight .value { color: #38bdf8; }
     .card.warn     .value { color: #fb923c; }
     .card.ok       .value { color: #4ade80; }
+    .notification-control {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .notification-control p { color: #94a3b8; font-size: 0.875rem; margin-top: 0.35rem; }
+    .notification-control button {
+      min-height: 44px;
+      padding: 0.6rem 1rem;
+      border: 1px solid #38bdf8;
+      border-radius: 0.5rem;
+      color: #f1f5f9;
+      background: #075985;
+      font: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .notification-control button:focus-visible { outline: 2px solid #f1f5f9; outline-offset: 2px; }
 
     .section-title {
       font-size: 0.95rem;
@@ -87,6 +108,7 @@
       border: 1px solid #334155;
       border-radius: 0.75rem;
     }
+    .chart-wrap { height: 300px; }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -152,13 +174,54 @@
       text-align: center;
     }
 
-    @media (max-width: 480px) {
-      .grid { grid-template-columns: 1fr 1fr; }
+    @media (max-width: 600px) {
+      body { padding: 1rem; }
+      header { flex-wrap: wrap; }
+      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; }
+      .card { padding: 0.85rem; min-width: 0; }
+      .card .value { font-size: 1.5rem; overflow-wrap: anywhere; }
+      .notification-control { align-items: stretch; flex-direction: column; }
+      .notification-control button { width: 100%; }
+      .chart-wrap { height: 240px; }
+      table, tbody, tr, td { display: block; width: 100%; }
+      thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      tbody tr { padding: 0.5rem 0.75rem; border-top: 1px solid #334155; }
+      td {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.35rem 0;
+        white-space: normal;
+        text-align: right;
+      }
+      td::before {
+        content: attr(data-label);
+        color: #94a3b8;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        text-align: left;
+        flex-shrink: 0;
+      }
       .bar-bg { display: none; }
+    }
+    @media (max-width: 360px) {
+      .grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
+<main>
 
 <header>
   <h1>⚡ Rate Announcer</h1>
@@ -175,8 +238,8 @@
 
   <div class="card {% if next_alert %}warn{% else %}ok{% endif %}">
     <div class="label">Next Announcement</div>
-    <div class="value" style="font-size:1.3rem">{{ next_alert if next_alert else "None scheduled" }}</div>
-    <div class="sub">{{ next_alert_in if next_alert else "All quiet" }}</div>
+    <div class="value" style="font-size:1.3rem">{{ "Paused" if not notifications_enabled else (next_alert if next_alert else "None scheduled") }}</div>
+    <div class="sub">{{ next_alert_in if next_alert else ("Notifications disabled" if not notifications_enabled else "All quiet") }}</div>
   </div>
 
   <div class="card">
@@ -192,10 +255,22 @@
   </div>
 </div>
 
+<div class="card notification-control">
+  <div>
+    <div class="section-title" style="margin-bottom:0">Google Home notifications</div>
+    <p role="status">{{ "Enabled" if notifications_enabled else "Paused" }} — {% if notifications_enabled %}scheduled announcements and sounds will play{% else %}scheduled announcements and sounds will be skipped{% endif %}.</p>
+  </div>
+  <form action="{{ url_for('update_notifications') }}" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="enabled" value="{{ 'false' if notifications_enabled else 'true' }}">
+    <button type="submit">{{ "Disable notifications" if notifications_enabled else "Enable notifications" }}</button>
+  </form>
+</div>
+
 <!-- Price chart -->
 <div class="section-title" style="margin-top:1.5rem">Price Chart (öre/kWh)</div>
-<div class="card" style="margin-bottom:1.5rem;padding:1.25rem 1rem">
-  <canvas id="priceChart" height="110"></canvas>
+<div class="card chart-wrap" style="margin-bottom:1.5rem">
+  <canvas id="priceChart" role="img" aria-label="Electricity prices in öre per kilowatt-hour"></canvas>
 </div>
 
 <!-- Price table -->
@@ -204,26 +279,26 @@
   <table>
     <thead>
       <tr>
-        <th>Date</th>
-        <th>Time</th>
-        <th>Price (öre/kWh)</th>
-        <th>Relative</th>
-        <th>Status</th>
+        <th scope="col">Date</th>
+        <th scope="col">Time</th>
+        <th scope="col">Price (öre/kWh)</th>
+        <th scope="col">Relative</th>
+        <th scope="col">Status</th>
       </tr>
     </thead>
     <tbody>
       {% for row in prices %}
       <tr class="{{ 'current-row' if row.is_current else '' }}">
-        <td class="time">{{ row.date }}</td>
-        <td>{{ row.display_time }}</td>
-        <td>{{ row.price }}</td>
-        <td>
+        <td class="time" data-label="Date">{{ row.date }}</td>
+        <td data-label="Time">{{ row.display_time }}</td>
+        <td data-label="Price (öre/kWh)">{{ row.price }}</td>
+        <td data-label="Relative">
           <span style="color:#94a3b8;font-size:0.8rem">{{ row.pct }}%</span>
           <span class="bar-bg">
             <span class="bar-fill" style="width:{{ row.pct }}%;background:{{ row.bar_color }}"></span>
           </span>
         </td>
-        <td>
+        <td data-label="Status">
           <span class="pill pill-{{ row.level }}">{{ row.level_label }}</span>
           {% if row.is_current %}<span class="pill pill-now" style="margin-left:0.25rem">NOW</span>{% endif %}
         </td>
@@ -237,6 +312,7 @@
   Auto-refreshes every 60 s &nbsp;·&nbsp; Data: ENTSO-E / Frankfurter &nbsp;·&nbsp;
   Generated {{ generated_at }}
 </footer>
+</main>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"
         integrity="sha384-JUh163oCRItcbPme8pYnROHQMC6fNKTBWtRG3I3I0erJkzNgL7uxKlNwcrcFKeqF"
@@ -246,7 +322,7 @@
   // Build the price chart from server-rendered data
   (function () {
     const priceData = {{ prices | tojson }};
-    if (!priceData || priceData.length === 0) return;
+    if (!priceData || priceData.length === 0 || typeof Chart === 'undefined') return;
 
     const labels     = priceData.map(r => r.display_time || r.time);
     const values     = priceData.map(r => r.price);
@@ -268,6 +344,7 @@
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         animation: false,
         plugins: {
           legend: { display: false },
@@ -301,7 +378,7 @@
 
   // Scroll the current-row into view
   const cur = document.querySelector('.current-row');
-  if (cur) cur.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (cur && window.innerWidth > 600) cur.scrollIntoView({ behavior: 'smooth', block: 'center' });
 </script>
 
 </body>

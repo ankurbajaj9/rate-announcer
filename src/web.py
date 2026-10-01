@@ -9,11 +9,13 @@ Serves a dashboard at http://<host>:<WEB_PORT>/ that shows:
 
 import logging
 import os
+import secrets
 import threading
+from hmac import compare_digest
 from datetime import date, datetime, timedelta
 
 import pandas as pd
-from flask import Flask, jsonify, render_template
+from flask import Flask, abort, jsonify, redirect, render_template, request, url_for
 
 from src.config import (
     PRICE_AREA,
@@ -23,10 +25,12 @@ from src.config import (
     WEB_PORT,
 )
 from src.prices import eur_mwh_to_sek_kwh, get_eur_to_sek
+from src.notification_settings import notifications_enabled, set_notifications_enabled
 
 log = logging.getLogger(__name__)
 
 app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), "templates"))
+_csrf_token = secrets.token_urlsafe(32)
 
 # Injected by main.py after the scheduler is started
 _scheduler = None
@@ -201,7 +205,8 @@ def dashboard():
     current_price = current_row["price"] if current_row else "—"
     current_time = current_row["time"] if current_row else "—"
 
-    next_alert, next_alert_in = _next_announcement()
+    enabled = notifications_enabled()
+    next_alert, next_alert_in = _next_announcement() if enabled else (None, None)
 
     return render_template(
         "index.html",
@@ -215,9 +220,27 @@ def dashboard():
         current_time=current_time,
         next_alert=next_alert,
         next_alert_in=next_alert_in,
+        notifications_enabled=enabled,
+        csrf_token=_csrf_token,
         date_label=datetime.now().strftime("%A, %d %b %Y"),
         generated_at=datetime.now().strftime("%H:%M:%S"),
     )
+
+
+@app.post("/notifications")
+def update_notifications():
+    """Update the notification override from the dashboard."""
+    if not compare_digest(request.form.get("csrf_token", ""), _csrf_token):
+        abort(403)
+    enabled = request.form.get("enabled")
+    if enabled not in ("true", "false"):
+        abort(400)
+    try:
+        set_notifications_enabled(enabled == "true")
+    except OSError:
+        log.exception("Unable to save notification setting.")
+        abort(503)
+    return redirect(url_for("dashboard"), code=303)
 
 
 @app.route("/api/status")
@@ -234,7 +257,8 @@ def api_status():
         avg_price = low_price = high_price = None
 
     current_row = next((r for r in price_rows if r["is_current"]), None)
-    next_alert, next_alert_in = _next_announcement()
+    enabled = notifications_enabled()
+    next_alert, next_alert_in = _next_announcement() if enabled else (None, None)
 
     return jsonify(
         {
@@ -247,6 +271,7 @@ def api_status():
             "high_price_ore": high_price,
             "next_announcement": next_alert,
             "next_announcement_in": next_alert_in,
+            "notifications_enabled": enabled,
             "prices": [
                 {
                     "date": r["date"],

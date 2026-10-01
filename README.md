@@ -56,6 +56,7 @@ The published container runs on Python 3.11, so local environments should use Py
       --network host \
       --restart unless-stopped \
       --env-file .env \
+      -v rate-announcer-data:/tmp \
       rate-announcer
     ```
 
@@ -65,6 +66,9 @@ The published container runs on Python 3.11, so local environments should use Py
     ```
 
 The dashboard will be available on the configured `WEB_PORT`, and the audio server uses `SERVE_PORT` from `src/config.py`.
+The dashboard works on phones and includes a button to pause or resume Google Home announcements and sounds.
+The choice is saved to `STATE_FILE` (default `/tmp/price_monitor_state`); `ENABLE_NOTIFICATIONS` in `.env` sets the initial state before a dashboard choice is saved.
+The Docker and Compose examples mount a named volume at `/tmp` so the choice survives container recreation. Keep the dashboard on a trusted network: anyone with access to it can change the notification setting.
 
 ## Automation (Systemd)
 

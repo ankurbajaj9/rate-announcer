@@ -7,4 +7,9 @@ services:
     env_file:
       - path: .env
         required: false
+    volumes:
+      - rate-announcer-data:/tmp
     restart: unless-stopped
+
+volumes:
+  rate-announcer-data:
