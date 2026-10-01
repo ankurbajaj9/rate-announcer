@@ -319,6 +319,13 @@ class TestNotificationControl(unittest.TestCase):
         self.addCleanup(self.default_patch.stop)
         self.client = app.test_client()
 
+    def test_mobile_table_headers_remain_available_to_assistive_technology(self):
+        with patch("src.web._load_prices", return_value=None):
+            html = self.client.get("/").get_data(as_text=True)
+
+        self.assertIn("thead {\n        position: absolute;", html)
+        self.assertEqual(html.count('<th scope="col">'), 5)
+
     def test_toggle_persists_across_requests_and_controls_both_audio_paths(self):
         from src.web import _csrf_token
         from src.notify import notify_google_home, notify_play_sound
