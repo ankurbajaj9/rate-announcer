@@ -25,7 +25,6 @@ import struct
 
 from src.config import (
     DISCOVERY_TIMEOUT_SEC,
-    ENABLE_NOTIFICATIONS,
     GOOGLE_HOME_HOST,
     GOOGLE_HOME_NAME,
     GOOGLE_HOME_PORT,
@@ -34,11 +33,11 @@ from src.config import (
     PLAYBACK_CHECK_INTERVAL_SEC,
     SERVE_PORT,
     TTS_LANGUAGE,
-    ENABLE_NOTIFICATIONS,
     EVENTS_DB_FILE,
 
 )
 from src.events import record_event
+from src.notification_settings import notifications_enabled
 
 log = logging.getLogger(__name__)
 
@@ -93,8 +92,8 @@ def notify_google_home(message: str, drop_time_iso: str | None = None) -> bool:
     Returns True on success, False on any failure.
     """
     # Global toggle: skip all notifications when disabled
-    if not ENABLE_NOTIFICATIONS:
-        log.info("Notifications disabled via ENABLE_NOTIFICATIONS; skipping TTS.")
+    if not notifications_enabled():
+        log.info("Notifications disabled; skipping TTS.")
         return True
 
     audio_path = None
@@ -275,8 +274,8 @@ def notify_play_sound(duration_sec: float = 0.6, frequency_hz: int = 880) -> boo
     Returns True on success, False on failure.
     """
     # Global toggle: skip all notifications when disabled
-    if not ENABLE_NOTIFICATIONS:
-        log.info("Notifications disabled via ENABLE_NOTIFICATIONS; skipping sound.")
+    if not notifications_enabled():
+        log.info("Notifications disabled; skipping sound.")
         return True
 
     audio_path = None
