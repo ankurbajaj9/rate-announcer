@@ -29,7 +29,7 @@ QUIET_HOURS_END = int(os.getenv("QUIET_HOURS_END", "7"))
 
 # Service Configuration
 SERVE_PORT = int(os.getenv("SERVE_PORT", "8765"))
-# Reserved for future persistent state storage
+# UI notification override (defaults to ENABLE_NOTIFICATIONS until changed in the dashboard)
 STATE_FILE = os.getenv("STATE_FILE", "/tmp/price_monitor_state")
 
 # Cache file paths

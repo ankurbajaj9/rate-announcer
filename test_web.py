@@ -7,6 +7,8 @@ Covers:
 """
 
 import unittest
+import os
+import tempfile
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
@@ -300,6 +302,89 @@ class TestLoadPrices(unittest.TestCase):
         self.assertEqual(len(result), 4)
         self.assertEqual(result.index[0].date(), today)
         self.assertEqual(result.index[-1].date(), tomorrow)
+
+
+class TestNotificationControl(unittest.TestCase):
+    def setUp(self):
+        from src.web import app
+
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.state_path = os.path.join(self.temp_dir.name, "notifications")
+        self.state_patch = patch("src.notification_settings.STATE_FILE", self.state_path)
+        self.state_patch.start()
+        self.addCleanup(self.state_patch.stop)
+        self.default_patch = patch("src.notification_settings.ENABLE_NOTIFICATIONS", True)
+        self.default_patch.start()
+        self.addCleanup(self.default_patch.stop)
+        self.client = app.test_client()
+
+    def test_toggle_persists_across_requests_and_controls_both_audio_paths(self):
+        from src.web import _csrf_token
+        from src.notify import notify_google_home, notify_play_sound
+        from src.notification_settings import notifications_enabled
+
+        with patch("src.web._load_prices", return_value=None):
+            self.assertIn(b"Disable notifications", self.client.get("/").data)
+            response = self.client.post(
+                "/notifications", data={"csrf_token": _csrf_token, "enabled": "false"}
+            )
+            self.assertEqual(response.status_code, 303)
+            self.assertFalse(notifications_enabled())
+            self.assertIn(b"Enable notifications", self.client.get("/").data)
+            self.assertIn(b"Paused", self.client.get("/").data)
+            status = self.client.get("/api/status").json
+            self.assertFalse(status["notifications_enabled"])
+            self.assertIsNone(status["next_announcement"])
+
+            with patch("src.notify.gTTS") as tts, patch("src.notify._serve_file") as serve:
+                self.assertTrue(notify_google_home("test"))
+                self.assertTrue(notify_play_sound())
+                tts.assert_not_called()
+                serve.assert_not_called()
+
+            response = self.client.post(
+                "/notifications", data={"csrf_token": _csrf_token, "enabled": "true"}
+            )
+            self.assertEqual(response.status_code, 303)
+            self.assertTrue(notifications_enabled())
+            self.assertIn(b"Disable notifications", self.client.get("/").data)
+            self.assertTrue(self.client.get("/api/status").json["notifications_enabled"])
+
+    def test_rejects_missing_or_invalid_token_and_value(self):
+        from src.web import _csrf_token
+        from src.notification_settings import notifications_enabled
+
+        self.assertEqual(self.client.post("/notifications", data={"enabled": "false"}).status_code, 403)
+        self.assertEqual(self.client.post("/notifications", data={
+            "csrf_token": "wrong", "enabled": "false"
+        }).status_code, 403)
+        self.assertEqual(self.client.post("/notifications", data={
+            "csrf_token": _csrf_token, "enabled": "unexpected"
+        }).status_code, 400)
+        self.assertTrue(notifications_enabled())
+        self.assertFalse(os.path.exists(self.state_path))
+
+    def test_invalid_state_fails_closed_and_missing_state_uses_default(self):
+        from src.notification_settings import notifications_enabled
+
+        self.assertTrue(notifications_enabled())
+        with open(self.state_path, "w", encoding="utf-8") as state:
+            state.write("invalid")
+        self.assertFalse(notifications_enabled())
+        with patch("src.notification_settings.ENABLE_NOTIFICATIONS", False):
+            os.unlink(self.state_path)
+            self.assertFalse(notifications_enabled())
+
+    def test_write_error_does_not_report_success(self):
+        from src.web import _csrf_token
+
+        with patch("src.web.set_notifications_enabled", side_effect=OSError("read only")):
+            response = self.client.post(
+                "/notifications", data={"csrf_token": _csrf_token, "enabled": "false"}
+            )
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(os.path.exists(self.state_path))
 
 
 if __name__ == "__main__":
