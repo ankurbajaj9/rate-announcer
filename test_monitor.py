@@ -384,6 +384,46 @@ class TestMonitor(unittest.TestCase):
     @patch("src.monitor.is_quiet_hour", return_value=False)
     @patch("src.monitor.get_eur_to_sek", return_value=11.0)
     @patch("src.monitor.fetch_quarter_prices")
+    def test_plan_day_ignores_prices_from_next_day(
+        self, mock_fetch, mock_fx, mock_quiet, mock_scheduler
+    ):
+        """Next-day prices must not affect a day's summary or alerts."""
+        from src.monitor import plan_day
+
+        tz = "Europe/Stockholm"
+        fixed_now = datetime(2026, 4, 20, 10, 0, 0)
+        today_prices = pd.date_range("2026-04-20 10:15", periods=3, freq="15min", tz=tz)
+        tomorrow_price = pd.date_range("2026-04-21", periods=1, freq="15min", tz=tz)
+        mock_prices = pd.Series(
+            [50.0, 90.0, 60.0, 1000.0],
+            index=today_prices.append(tomorrow_price),
+        )
+        mock_fetch.return_value = (mock_prices, True)
+
+        def now_side_effect(tzarg=None):
+            if tzarg:
+                return datetime(2026, 4, 20, 10, 0, 0, tzinfo=tzarg)
+            return fixed_now
+
+        with patch("src.monitor.datetime") as mock_datetime:
+            mock_datetime.now.side_effect = now_side_effect
+            plan_day(date(2026, 4, 20), force_summary=True)
+
+        messages = [
+            call.kwargs["args"][0]
+            for call in mock_scheduler.add_job.call_args_list
+            if call.args[:2] == (notify_google_home, "date")
+        ]
+        summary = next(message for message in messages if message.startswith("Summary"))
+        self.assertIn("max 99.0 öre at 10:30", summary)
+        self.assertTrue(any(message.startswith("Price alert: 99.0 öre") for message in messages))
+        self.assertFalse(any("1100.0 öre" in message for message in messages))
+
+    @patch("src.monitor.ALERT_OFFSET_MINUTES", 1)
+    @patch("src.monitor.scheduler")
+    @patch("src.monitor.is_quiet_hour", return_value=False)
+    @patch("src.monitor.get_eur_to_sek", return_value=11.0)
+    @patch("src.monitor.fetch_quarter_prices")
     def test_alerts_fire_immediately_when_restart_mid_peak(
         self, mock_fetch, mock_fx, mock_quiet, mock_scheduler
     ):
@@ -543,4 +583,3 @@ class TestMonitor(unittest.TestCase):
             plan_day(date(2026, 4, 21))
 
         mock_scheduler.add_job.assert_not_called()
-

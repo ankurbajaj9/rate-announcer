@@ -124,6 +124,7 @@ def plan_day(target_date: date, force_summary: bool = False) -> None:
     """
     try:
         prices_eur, is_new_fetch = fetch_quarter_prices(target_date)
+        prices_eur = prices_eur[prices_eur.index.date == target_date]
         if prices_eur.empty:
             log.warning("No price data found for %s.", target_date)
             return
