@@ -134,6 +134,7 @@ def _build_price_rows(prices: pd.Series) -> list[dict]:
     today = date.today()
     tomorrow = today + timedelta(days=1)
     daily_max = float(prices.max())
+    daily_max_by_date = prices.groupby(prices.index.date).max()
     daily_min = float(prices.min())
     price_range = daily_max - daily_min if daily_max != daily_min else 1.0
     threshold = daily_max * THRESHOLD_PERCENT
@@ -142,7 +143,8 @@ def _build_price_rows(prices: pd.Series) -> list[dict]:
     for ts, val in prices.items():
         price_sek = float(val)
         price_ore = round(price_sek * 100, 1)
-        pct = round((price_sek / daily_max) * 100) if daily_max else 0
+        rate_day_max = float(daily_max_by_date[ts.date()])
+        pct = round((price_sek / rate_day_max) * 100) if rate_day_max else 0
 
         # Colour band (high / mid / low)
         if price_sek >= threshold:

@@ -86,6 +86,15 @@ class TestBuildPriceRows(unittest.TestCase):
         self.assertEqual(rows[0]["pct"], 50)
         self.assertEqual(rows[1]["pct"], 100)
 
+    def test_pct_uses_each_rates_calendar_day(self):
+        """Rates on a new day are measured against that day's maximum."""
+        prices = self._make_series(
+            [0.5, 1.0, 0.4, 0.8],
+            start="2026-04-24 23:30",
+        )
+        rows = _build_price_rows(prices)
+        self.assertEqual([row["pct"] for row in rows], [50, 100, 50, 100])
+
 
 class TestNextAnnouncement(unittest.TestCase):
     """Tests for _next_announcement()."""
